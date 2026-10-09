@@ -10,13 +10,22 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
- data class NavigationState(
+data class FavoriteEditorState(
+    val id: Long? = null,
+    val draft: FavoriteDraft? = null,
+    val saving: Boolean = false,
+    val error: String? = null
+)
+
+data class NavigationState(
     val configuration: AppConfiguration = AppConfiguration(),
     val scooters: RemoteData<List<ScooterSummary>> = RemoteData(),
     val destination: RemoteData<NavigationTarget> = RemoteData(),
     val savedLocations: RemoteData<List<PlaceResult>> = RemoteData(),
     val personalPlaces: RemoteData<PersonalPlaces> = RemoteData(),
+    val favoriteEditor: FavoriteEditorState = FavoriteEditorState(),
     val sending: Boolean = false,
+    val lastCommandOutcome: CommandOutcome? = null,
     val query: String = "",
     val results: List<PlaceResult> = emptyList(),
     val searching: Boolean = false,
@@ -37,6 +46,7 @@ class NavigationViewModel @JvmOverloads constructor(
     private var destinationJob: Job? = null
     private var locationsJob: Job? = null
     private var personalPlacesJob: Job? = null
+    private var favoriteJob: Job? = null
     private var commandJob: Job? = null
     private var searchJob: Job? = null
     private var scooterGeneration = 0
@@ -54,8 +64,10 @@ class NavigationViewModel @JvmOverloads constructor(
                         storedConfiguration = config
                         cancelResources()
                         commandJob?.cancel()
+                        if (old?.accountKey != config.accountKey) favoriteJob?.cancel()
                         mutableState.value = mutableState.value.copy(
                             configuration = config, sending = false,
+                            favoriteEditor = if (old?.accountKey == config.accountKey) mutableState.value.favoriteEditor else FavoriteEditorState(),
                             scooters = if (old?.accountKey == config.accountKey) mutableState.value.scooters else RemoteData(),
                             destination = RemoteData(), savedLocations = RemoteData(),
                             personalPlaces = if (old?.accountKey == config.accountKey) mutableState.value.personalPlaces else RemoteData(),
@@ -71,6 +83,15 @@ class NavigationViewModel @JvmOverloads constructor(
             } catch (error: CancellationException) { throw error
             } catch (_: Exception) {
                 mutableState.value = mutableState.value.copy(error = "Unable to load settings. Restart the app and retry.")
+            }
+        }
+        viewModelScope.launch {
+            gateway.personalPlacesChanges.collect { changedConfiguration ->
+                val current = mutableState.value.configuration
+                if (current.isAuthenticated && changedConfiguration.accountKey == current.accountKey) {
+                    mutableState.value = mutableState.value.copy(personalPlaces = mutableState.value.personalPlaces.copy(updatedAt = 0))
+                    if (!mutableState.value.sending) refreshPersonalPlaces(forceRefresh = true)
+                }
             }
         }
         viewModelScope.launch {
@@ -118,7 +139,7 @@ class NavigationViewModel @JvmOverloads constructor(
                 }
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) {
-                if (generation == scooterGeneration) mutableState.value = mutableState.value.copy(scooters = mutableState.value.scooters.failed(userMessage(error)))
+                if (generation == scooterGeneration) mutableState.value = mutableState.value.copy(scooters = mutableState.value.scooters.failed(userMessage(error, config)))
             } finally {
                 if (generation == scooterGeneration) mutableState.value = mutableState.value.copy(scooters = mutableState.value.scooters.copy(loading = false))
             }
@@ -170,7 +191,7 @@ class NavigationViewModel @JvmOverloads constructor(
                 if (generation == destinationGeneration && mutableState.value.configuration == config) mutableState.value = mutableState.value.copy(destination = RemoteData.loaded(value))
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) {
-                if (generation == destinationGeneration) mutableState.value = mutableState.value.copy(destination = mutableState.value.destination.failed(userMessage(error)))
+                if (generation == destinationGeneration) mutableState.value = mutableState.value.copy(destination = mutableState.value.destination.failed(userMessage(error, config)))
             } finally {
                 if (generation == destinationGeneration) mutableState.value = mutableState.value.copy(destination = mutableState.value.destination.copy(loading = false))
             }
@@ -187,7 +208,7 @@ class NavigationViewModel @JvmOverloads constructor(
                 if (generation == locationsGeneration && mutableState.value.configuration == config) mutableState.value = mutableState.value.copy(savedLocations = RemoteData.loaded(value))
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) {
-                if (generation == locationsGeneration) mutableState.value = mutableState.value.copy(savedLocations = mutableState.value.savedLocations.failed(userMessage(error)))
+                if (generation == locationsGeneration) mutableState.value = mutableState.value.copy(savedLocations = mutableState.value.savedLocations.failed(userMessage(error, config)))
             } finally {
                 if (generation == locationsGeneration) mutableState.value = mutableState.value.copy(savedLocations = mutableState.value.savedLocations.copy(loading = false))
             }
@@ -206,9 +227,71 @@ class NavigationViewModel @JvmOverloads constructor(
                 if (generation == personalGeneration && storedConfiguration?.accountKey == config.accountKey) mutableState.value = mutableState.value.copy(personalPlaces = RemoteData.loaded(value))
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) {
-                if (generation == personalGeneration) mutableState.value = mutableState.value.copy(personalPlaces = mutableState.value.personalPlaces.failed(userMessage(error)))
+                if (generation == personalGeneration) mutableState.value = mutableState.value.copy(personalPlaces = mutableState.value.personalPlaces.failed(userMessage(error, config)))
             } finally {
                 if (generation == personalGeneration) mutableState.value = mutableState.value.copy(personalPlaces = mutableState.value.personalPlaces.copy(loading = false))
+            }
+        }
+    }
+
+    fun editFavorite(id: Long?, draft: FavoriteDraft?) {
+        if (!mutableState.value.favoriteEditor.saving) mutableState.value = mutableState.value.copy(favoriteEditor = FavoriteEditorState(id, draft))
+    }
+
+    fun saveFavorite() {
+        val current = mutableState.value
+        val config = current.configuration
+        val editor = current.favoriteEditor
+        val draft = editor.draft ?: return
+        if (editor.saving || !config.isAuthenticated || !draft.place.coordinates.isValid()) return
+        if (config.favoritePermission == PermissionCapability.UpgradeRequired) {
+            mutableState.value = current.copy(favoriteEditor = editor.copy(error = "Reconnect Sunshine and approve saved-place access to manage favorites."))
+            return
+        }
+        favoriteJob?.cancel()
+        mutableState.value = current.copy(favoriteEditor = editor.copy(saving = true, error = null))
+        favoriteJob = viewModelScope.launch {
+            try {
+                if (editor.id == null) gateway.createFavorite(config, draft) else gateway.updateFavorite(config, editor.id, draft)
+                if (storedConfiguration?.accountKey == config.accountKey) {
+                    mutableState.value = mutableState.value.copy(favoriteEditor = FavoriteEditorState())
+                    refreshPersonalPlaces(forceRefresh = true)
+                }
+            } catch (error: CancellationException) { throw error
+            } catch (error: Exception) {
+                if (storedConfiguration?.accountKey == config.accountKey) mutableState.value = mutableState.value.copy(favoriteEditor = editor.copy(saving = false, error = userMessage(error, config)))
+            }
+        }
+    }
+
+    fun setFavorite(savedPlace: SavedPlace, favorite: Boolean) {
+        val config = mutableState.value.configuration
+        mutateFavorite(config) { gateway.setFavorite(config, savedPlace.id, savedPlace.place, favorite) }
+    }
+
+    fun deleteFavorite(savedPlace: SavedPlace) {
+        val config = mutableState.value.configuration
+        mutateFavorite(config) { gateway.deleteFavorite(config, savedPlace.id) }
+    }
+
+    private fun mutateFavorite(config: AppConfiguration, mutation: suspend () -> Unit) {
+        if (!config.isAuthenticated || mutableState.value.favoriteEditor.saving) return
+        if (config.favoritePermission == PermissionCapability.UpgradeRequired) {
+            mutableState.value = mutableState.value.copy(favoriteEditor = FavoriteEditorState(error = "Reconnect Sunshine and approve saved-place access to manage favorites."))
+            return
+        }
+        val owner = config.accountKey
+        mutableState.value = mutableState.value.copy(favoriteEditor = FavoriteEditorState(saving = true))
+        favoriteJob?.cancel()
+        favoriteJob = viewModelScope.launch {
+            try {
+                mutation()
+                if (storedConfiguration?.accountKey == owner) refreshPersonalPlaces(forceRefresh = true)
+            } catch (error: CancellationException) { throw error
+            } catch (error: Exception) {
+                if (storedConfiguration?.accountKey == owner) mutableState.value = mutableState.value.copy(favoriteEditor = FavoriteEditorState(error = userMessage(error, config)))
+            } finally {
+                if (storedConfiguration?.accountKey == owner) mutableState.value = mutableState.value.copy(favoriteEditor = mutableState.value.favoriteEditor.copy(saving = false))
             }
         }
     }
@@ -239,6 +322,36 @@ class NavigationViewModel @JvmOverloads constructor(
             } finally {
                 if (generation == searchGeneration) mutableState.value = mutableState.value.copy(searching = false)
             }
+        }
+    }
+
+    fun sendToScooter(target: CommandTarget) {
+        val current = mutableState.value
+        val config = current.configuration
+        val scooter = current.scooters.value.orEmpty().firstOrNull { it.id == target.configuration.scooterId }
+        if (target.configuration != config || !config.isReady || scooter == null || scooter.online != true || current.sending) {
+            mutableState.value = current.copy(error = if (scooter?.online == false) "This scooter is offline. Refresh or choose another scooter; your place is still here." else "Scooter or account access changed. Confirm the destination again.")
+            return
+        }
+        if (target.place != null && !target.place.coordinates.isValid()) return
+        destinationGeneration++; destinationJob?.cancel()
+        locationsGeneration++; locationsJob?.cancel()
+        mutableState.value = current.copy(sending = true, error = null, lastCommandOutcome = null)
+        commandJob = viewModelScope.launch {
+            try {
+                val outcome = gateway.sendToScooter(target)
+                if (mutableState.value.configuration == target.configuration) {
+                    mutableState.value = mutableState.value.copy(lastCommandOutcome = outcome)
+                    refreshDestination(target.configuration)
+                }
+            } catch (error: CancellationException) { throw error
+            } catch (error: Exception) {
+                val uncertain = error is java.io.IOException || error is org.openapitools.client.infrastructure.ServerException
+                mutableState.value = mutableState.value.copy(
+                    error = if (uncertain) "The server response was interrupted. Check this scooter's destination before retrying." else userMessage(error, target.configuration),
+                    lastCommandOutcome = if (uncertain) CommandOutcome.DeliveryUncertain(target) else null
+                )
+            } finally { mutableState.value = mutableState.value.copy(sending = false) }
         }
     }
 

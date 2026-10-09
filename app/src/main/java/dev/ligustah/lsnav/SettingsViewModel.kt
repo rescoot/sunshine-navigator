@@ -57,8 +57,8 @@ class SettingsViewModel @JvmOverloads constructor(
         mutableState.value = mutableState.value.copy(draft = value, error = null, message = null)
     }
     fun discardChanges() = draft(mutableState.value.profile.configuration)
-    fun updateToken(value: String) = draft(mutableState.value.draft.copy(token = value, oauthSessionId = null, scooterId = null, scooterName = ""))
-    fun updateUrl(value: String) = draft(mutableState.value.draft.copy(baseUrl = value, oauthSessionId = null, scooterId = null, scooterName = ""))
+    fun updateToken(value: String) = draft(mutableState.value.draft.copy(token = value, oauthSessionId = null, grantedScopes = emptySet(), scooterId = null, scooterName = ""))
+    fun updateUrl(value: String) = draft(mutableState.value.draft.copy(baseUrl = value, oauthSessionId = null, grantedScopes = emptySet(), scooterId = null, scooterName = ""))
     fun updateClientId(value: String) = draft(mutableState.value.draft.copy(oauthClientId = value))
     fun chooseOnDemand() = draft(mutableState.value.profile.configuration.copy(scooterId = null, scooterName = ""))
     fun select(scooter: ScooterSummary) {
@@ -114,7 +114,7 @@ class SettingsViewModel @JvmOverloads constructor(
         viewModelScope.launch {
             try {
                 require(draft.token.isNotBlank()) { "Enter your API token." }
-                val config = draft.copy(token = draft.token.trim(), baseUrl = ApiClientProvider.normalizeBaseUrl(draft.baseUrl), oauthSessionId = null, scooterId = null, scooterName = "")
+                val config = draft.copy(token = draft.token.trim(), baseUrl = ApiClientProvider.normalizeBaseUrl(draft.baseUrl), oauthSessionId = null, grantedScopes = emptySet(), scooterId = null, scooterName = "")
                 val scooters = gateway.scooters(config, true)
                 settings.saveProfile(AppProfile(config, mutableState.value.profile.onboardingComplete))
                 draft(config)

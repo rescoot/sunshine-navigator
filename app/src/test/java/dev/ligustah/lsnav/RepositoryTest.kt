@@ -37,6 +37,54 @@ class RepositoryTest {
             assertEquals("Bearer test-token", request.getHeader("Authorization"))
         }
     }
+    @Test fun `scooters map physical metadata without guessing from nickname`() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody("""[{"id":7,"name":"Bluebird","vin":"VIN7","color":"red","color_id":"red-1","color_hex":"#cc0000","model":"uno","license_plate":"AB-123","online":true,"last_seen_at":"2025-01-02T03:04:05Z","images":{"front":"https://sunshine.example/front.png","left":null,"right":"https://sunshine.example/right.png"}}]"""))
+            val scooter = NavigationRepository { provider(server) }.scooters(config).single()
+            assertEquals("red", scooter.color)
+            assertEquals("uno", scooter.model)
+            assertEquals("AB-123", scooter.licensePlate)
+            assertEquals("https://sunshine.example/front.png", scooter.images.front)
+            assertEquals("2025-01-02T03:04:05Z", scooter.lastSeenAt)
+        }
+    }
+    @Test fun `favorite mutations use user saved destination routes and invalidate cache`() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody("""{"favorites":[],"recent":[]}"""))
+            server.enqueue(MockResponse().setResponseCode(201).setBody("""{"id":12,"label":"Home","latitude":52.5,"longitude":13.4,"is_favorite":true,"search_key":"home"}"""))
+            val gateway = NavigationRepository { provider(server) }
+            gateway.personalPlaces(config)
+            val place = gateway.createFavorite(config, FavoriteDraft("Home", PlaceResult(Coordinates(52.5, 13.4), "Home"), "home"))
+            assertTrue(place.isFavorite)
+            assertEquals("home", place.searchKey)
+            val listRequest = server.takeRequest(5, TimeUnit.SECONDS)!!
+            val createRequest = server.takeRequest(5, TimeUnit.SECONDS)!!
+            assertEquals("/api/v1/saved_destinations", listRequest.path)
+            assertEquals("POST", createRequest.method)
+            assertTrue(createRequest.body.readUtf8().contains("\"search_key\":\"home\""))
+            server.enqueue(MockResponse().setBody("""{"favorites":[{"id":12,"label":"Home","latitude":52.5,"longitude":13.4,"is_favorite":true}],"recent":[]}"""))
+            assertEquals(1, gateway.personalPlaces(config).favorites.size)
+            assertEquals("/api/v1/saved_destinations", server.takeRequest(5, TimeUnit.SECONDS)!!.path)
+        }
+    }
+
+    @Test fun `favorite update and delete use source owner routes`() = runBlocking {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse().setBody("""{"id":12,"label":"Home","latitude":52.5,"longitude":13.4,"is_favorite":false}"""))
+            server.enqueue(MockResponse().setBody("""{"status":"success"}"""))
+            val gateway = NavigationRepository { provider(server) }
+            gateway.setFavorite(config, 12, PlaceResult(Coordinates(52.5, 13.4), "Home"), false)
+            gateway.deleteFavorite(config, 12)
+            val update = server.takeRequest(5, TimeUnit.SECONDS)!!
+            val delete = server.takeRequest(5, TimeUnit.SECONDS)!!
+            assertEquals("PATCH", update.method)
+            assertEquals("/api/v1/saved_destinations/12", update.path)
+            assertTrue(update.body.readUtf8().contains("\"is_favorite\":false"))
+            assertEquals("DELETE", delete.method)
+            assertEquals("/api/v1/saved_destinations/12", delete.path)
+        }
+    }
+
     @Test fun `authorization failures expose a useful message`() = runBlocking {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setResponseCode(403).setBody("""{"error":{"code":"forbidden","message":"Location permission required"}}"""))

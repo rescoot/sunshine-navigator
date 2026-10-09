@@ -8,10 +8,26 @@ data class Coordinates(val latitude: Double, val longitude: Double) {
 }
 
 data class PlaceResult(val coordinates: Coordinates, val label: String)
-data class ScooterSummary(val id: Long, val name: String, val online: Boolean? = null, val state: String? = null)
+data class ScooterImages(val front: String? = null, val left: String? = null, val right: String? = null)
+data class ScooterSummary(
+    val id: Long,
+    val name: String,
+    val online: Boolean? = null,
+    val state: String? = null,
+    val vin: String? = null,
+    val color: String? = null,
+    val colorId: String? = null,
+    val colorHex: String? = null,
+    val model: String? = null,
+    val licensePlate: String? = null,
+    val lastSeenAt: String? = null,
+    val images: ScooterImages = ScooterImages()
+)
 data class NavigationTarget(val place: PlaceResult? = null, val multiStopSupported: Boolean = false)
-data class SavedPlace(val id: Long, val place: PlaceResult)
+data class SavedPlace(val id: Long, val place: PlaceResult, val isFavorite: Boolean = true, val searchKey: String? = null)
 data class PersonalPlaces(val favorites: List<SavedPlace> = emptyList(), val recent: List<SavedPlace> = emptyList())
+data class FavoriteDraft(val label: String, val place: PlaceResult, val searchKey: String? = null)
+data class CommandTarget(val configuration: AppConfiguration, val place: PlaceResult?)
 data class AppProfile(val configuration: AppConfiguration = AppConfiguration(), val onboardingComplete: Boolean = false)
 data class DestinationChange(val configuration: AppConfiguration)
 

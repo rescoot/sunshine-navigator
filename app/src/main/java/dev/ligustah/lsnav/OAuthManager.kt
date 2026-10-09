@@ -92,10 +92,10 @@ class OAuthManager private constructor(context: Context) {
                 }
             }
             require(state.isAuthorized && !state.accessToken.isNullOrBlank()) { "Sign-in did not return an access token." }
-            require(state.scope?.split(' ')?.containsAll(listOf("read", "scooter_control")) == true) { "Approve read and scooter control access to use navigation." }
+            val scopes = grantedScopes(state.scope ?: response.scope)
             val id = UUID.randomUUID().toString()
-            write(record.put("id", id).put("root", root).put("state", state.jsonSerialize()))
-            AppConfiguration(baseUrl = ApiClientProvider.normalizeBaseUrl(root), oauthSessionId = id, oauthClientId = expected.clientId)
+            write(record.put("id", id).put("root", root).put("state", state.jsonSerialize()).put("scopes", scopes.sorted().joinToString(" ")))
+            AppConfiguration(baseUrl = ApiClientProvider.normalizeBaseUrl(root), oauthSessionId = id, oauthClientId = expected.clientId, grantedScopes = scopes)
         } finally { service.dispose() }
     }
 
@@ -131,12 +131,14 @@ class OAuthManager private constructor(context: Context) {
         fun get(context: Context): OAuthManager = instance ?: synchronized(this) {
             instance ?: OAuthManager(context).also { instance = it }
         }
+        fun grantedScopes(scope: String?): Set<String> = scope.orEmpty().split(' ').filter(String::isNotBlank).toSet()
+
         fun authorizationRequest(baseUrl: String, clientId: String): AuthorizationRequest {
             val root = serverRoot(baseUrl)
             require(clientId.isNotBlank()) { "Enter a public OAuth client ID for this server." }
             val configuration = AuthorizationServiceConfiguration(Uri.parse("$root/oauth/authorize"), Uri.parse("$root/oauth/token"))
             return AuthorizationRequest.Builder(configuration, clientId.trim(), ResponseTypeValues.CODE, Uri.parse(REDIRECT_URI))
-                .setScopes("read", "scooter_control").setState(UUID.randomUUID().toString()).build()
+                .setScopes("read", "write", "scooter_control").setState(UUID.randomUUID().toString()).build()
         }
         fun serverRoot(baseUrl: String): String = ApiClientProvider.normalizeBaseUrl(baseUrl).removeSuffix("/api/v1")
     }

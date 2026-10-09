@@ -162,6 +162,30 @@ class ViewModelTest {
         assertNull(configurations.value.scooterId)
     }
 
+    @Test fun `tap action binds destination and scooter in immutable target`() = runTest(dispatcher) {
+        val gateway = FakeGateway()
+        gateway.firstRead.complete(NavigationTarget())
+        val onlineScooter = ScooterSummary(1, "Test scooter", online = true)
+        val source = object : NavigationGateway by gateway {
+            override suspend fun scooters(configuration: AppConfiguration, forceRefresh: Boolean) = listOf(onlineScooter)
+            override suspend fun setDestination(configuration: AppConfiguration, place: PlaceResult) {
+                gateway.writes++
+                gateway.lastWrite = configuration
+                gateway.write.complete(Unit)
+            }
+        }
+        val model = NavigationViewModel(application, SavedStateHandle(), source, resolver, MutableStateFlow(config))
+        runCurrent()
+        val tappedTarget = CommandTarget(config, place)
+        model.sendToScooter(tappedTarget)
+        gateway.write.complete(Unit)
+        runCurrent()
+        assertEquals(1, gateway.writes)
+        assertEquals(1L, gateway.lastWrite?.scooterId)
+        assertEquals(place, tappedTarget.place)
+        assertFalse(model.state.value.sending)
+    }
+
     @Test fun `navigation rejects a confirmation for a different scooter`() = runTest(dispatcher) {
         val gateway = FakeGateway()
         val model = NavigationViewModel(application, SavedStateHandle(), gateway, resolver, MutableStateFlow(config))
