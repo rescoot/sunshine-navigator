@@ -16,6 +16,7 @@ data class SettingsState(
     val profile: AppProfile = AppProfile(),
     val draft: AppConfiguration = AppConfiguration(),
     val scooters: RemoteData<List<ScooterSummary>> = RemoteData(),
+    val scooterReconnectRequired: Boolean = false,
     val authenticating: Boolean = false,
     val saving: Boolean = false,
     val error: String? = null,
@@ -44,7 +45,8 @@ class SettingsViewModel @JvmOverloads constructor(
                     val accountChanged = previous.profile.configuration.accountKey != config.accountKey
                     val draft = if (!previous.initialized || accountChanged || previous.draft == previous.profile.configuration) config else previous.draft
                     mutableState.value = previous.copy(initialized = true, profile = profile, draft = draft,
-                        scooters = if (accountChanged) RemoteData() else previous.scooters)
+                        scooters = if (accountChanged) RemoteData() else previous.scooters,
+                        scooterReconnectRequired = if (accountChanged) false else previous.scooterReconnectRequired)
                     if (accountChanged && config.isAuthenticated) fetch(false)
                     if (!config.isAuthenticated) { generation++; fetchJob?.cancel() }
                 }
@@ -72,17 +74,20 @@ class SettingsViewModel @JvmOverloads constructor(
         if (!config.isAuthenticated || mutableState.value.saving) return
         val current = ++generation
         fetchJob?.cancel()
-        mutableState.value = mutableState.value.copy(scooters = mutableState.value.scooters.refreshing())
+        mutableState.value = mutableState.value.copy(scooters = mutableState.value.scooters.refreshing(), scooterReconnectRequired = false)
         fetchJob = viewModelScope.launch {
             try {
                 val scooters = gateway.scooters(config, forceRefresh)
                 if (current == generation) {
-                    mutableState.value = mutableState.value.copy(scooters = RemoteData.loaded(scooters))
+                    mutableState.value = mutableState.value.copy(scooters = RemoteData.loaded(scooters), scooterReconnectRequired = false)
                     if (config.scooterId != null && scooters.none { it.id == config.scooterId }) chooseOnDemand()
                 }
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) {
-                if (current == generation) mutableState.value = mutableState.value.copy(scooters = mutableState.value.scooters.failed(userMessage(error)))
+                if (current == generation) mutableState.value = mutableState.value.copy(
+                    scooters = mutableState.value.scooters.failed(scooterFetchMessage(error, config)),
+                    scooterReconnectRequired = scooterFetchNeedsReconnect(error, config)
+                )
             } finally {
                 if (current == generation) mutableState.value = mutableState.value.copy(scooters = mutableState.value.scooters.copy(loading = false))
             }
@@ -118,7 +123,7 @@ class SettingsViewModel @JvmOverloads constructor(
                 val scooters = gateway.scooters(config, true)
                 settings.saveProfile(AppProfile(config, mutableState.value.profile.onboardingComplete))
                 draft(config)
-                mutableState.value = mutableState.value.copy(scooters = RemoteData.loaded(scooters))
+                mutableState.value = mutableState.value.copy(scooters = RemoteData.loaded(scooters), scooterReconnectRequired = false)
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) { authError(error)
             } finally { mutableState.value = mutableState.value.copy(authenticating = false) }

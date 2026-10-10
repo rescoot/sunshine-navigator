@@ -21,6 +21,7 @@ data class NavigationState(
     val configuration: AppConfiguration = AppConfiguration(),
     val configurationLoaded: Boolean = false,
     val scooters: RemoteData<List<ScooterSummary>> = RemoteData(),
+    val scooterReconnectRequired: Boolean = false,
     val destination: RemoteData<NavigationTarget> = RemoteData(),
     val savedLocations: RemoteData<List<PlaceResult>> = RemoteData(),
     val personalPlaces: RemoteData<PersonalPlaces> = RemoteData(),
@@ -95,6 +96,7 @@ class NavigationViewModel @JvmOverloads constructor(
                             incomingResolutionRequired = if (old?.accountKey == config.accountKey) mutableState.value.incomingResolutionRequired else false,
                             favoriteEditor = if (old?.accountKey == config.accountKey) mutableState.value.favoriteEditor else FavoriteEditorState(),
                             scooters = if (old?.accountKey == config.accountKey) mutableState.value.scooters else RemoteData(),
+                            scooterReconnectRequired = if (old?.accountKey == config.accountKey) mutableState.value.scooterReconnectRequired else false,
                             destination = RemoteData(), savedLocations = RemoteData(),
                             personalPlaces = if (old?.accountKey == config.accountKey) mutableState.value.personalPlaces else RemoteData(),
                             lastCommandOutcome = null, lastCommandIncomingRequestId = null,
@@ -177,7 +179,7 @@ class NavigationViewModel @JvmOverloads constructor(
         if (!config.isAuthenticated) return
         val generation = ++scooterGeneration
         scootersJob?.cancel()
-        mutableState.value = mutableState.value.copy(scooters = mutableState.value.scooters.refreshing())
+        mutableState.value = mutableState.value.copy(scooters = mutableState.value.scooters.refreshing(), scooterReconnectRequired = false)
         scootersJob = viewModelScope.launch {
             try {
                 val value = gateway.scooters(config, forceRefresh).distinctBy { it.id }
@@ -187,7 +189,7 @@ class NavigationViewModel @JvmOverloads constructor(
                     val selectedExists = selectedId == null || value.any { it.id == selectedId }
                     val defaultScooterId = current.defaultScooterId?.takeIf { id -> value.any { it.id == id } }
                     mutableState.value = current.copy(
-                        scooters = RemoteData.loaded(value),
+                        scooters = RemoteData.loaded(value), scooterReconnectRequired = false,
                         defaultScooterId = defaultScooterId,
                         configuration = if (selectedExists) current.configuration else current.configuration.copy(scooterId = null, scooterName = ""),
                         destination = if (selectedExists) current.destination else RemoteData(),
@@ -200,7 +202,10 @@ class NavigationViewModel @JvmOverloads constructor(
                 }
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) {
-                if (generation == scooterGeneration) mutableState.value = mutableState.value.copy(scooters = mutableState.value.scooters.failed(userMessage(error, config)))
+                if (generation == scooterGeneration) mutableState.value = mutableState.value.copy(
+                    scooters = mutableState.value.scooters.failed(scooterFetchMessage(error, config)),
+                    scooterReconnectRequired = scooterFetchNeedsReconnect(error, config)
+                )
             } finally {
                 if (generation == scooterGeneration) mutableState.value = mutableState.value.copy(scooters = mutableState.value.scooters.copy(loading = false))
             }

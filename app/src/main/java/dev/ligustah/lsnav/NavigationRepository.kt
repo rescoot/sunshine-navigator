@@ -55,7 +55,11 @@ class NavigationRepository(
             scooter.id?.let { id -> ScooterSummary(
                 id = id, name = scooter.name.ifBlank { "Scooter $id" }, online = scooter.online, state = scooter.state,
                 vin = scooter.vin, color = scooter.color, colorId = scooter.colorId, colorHex = scooter.colorHex,
-                model = scooter.model, licensePlate = scooter.licensePlate, lastSeenAt = scooter.lastSeenAt?.toString(),
+                model = scooter.model?.let { metadata -> ScooterModelInfo(
+                    modelName = metadata.modelName, enginePowerRatingW = metadata.enginePowerRatingW,
+                    speedClassKmh = metadata.speedClassKmh, constructionYear = metadata.constructionYear,
+                    color = metadata.color, fullName = metadata.fullName
+                ) }, licensePlate = scooter.licensePlate, lastSeenAt = scooter.lastSeenAt?.toString(),
                 images = scooter.images?.let { ScooterImages(it.front, it.left, it.right) } ?: ScooterImages()
             ) }
         }.distinctBy { it.id } }
@@ -192,6 +196,28 @@ sealed interface CommandOutcome {
     data class ServerAccepted(val target: CommandTarget) : CommandOutcome
     data class DeliveryUncertain(val target: CommandTarget) : CommandOutcome
 }
+
+fun scooterFetchMessage(error: Exception, configuration: AppConfiguration): String = when (error) {
+    is OAuthLoginRequired -> "Your Sunshine session needs renewal. Reconnect to load scooters."
+    is ClientException -> when (error.statusCode) {
+        401 -> if (configuration.oauthSessionId != null) "Sunshine rejected the session while loading scooters (HTTP 401). Reconnect and retry."
+            else "Sunshine rejected the API token while loading scooters (HTTP 401). Update the connection and retry."
+        403 -> if (configuration.oauthSessionId != null) "Sunshine denied scooter access (HTTP 403). Reconnect to refresh access or check scooter sharing permissions."
+            else "Sunshine denied scooter access (HTTP 403). Update the connection or check scooter sharing permissions."
+        404 -> "Sunshine did not recognize the scooter-list request (HTTP 404). Check the server address and retry."
+        429 -> "Sunshine is limiting scooter requests (HTTP 429). Wait a moment and retry."
+        else -> if (error.statusCode > 0) "Sunshine rejected the scooter-list request (HTTP ${error.statusCode}). Check access and retry."
+            else "Sunshine rejected the scooter-list request. Check access and retry."
+    }
+    is ServerException -> if (error.statusCode > 0) "Sunshine could not load scooters (HTTP ${error.statusCode}). Retry later."
+        else "Sunshine could not load scooters. Retry later."
+    is IOException -> "Couldn't reach Sunshine. Check your connection and retry."
+    is com.squareup.moshi.JsonDataException -> "Sunshine returned scooter data this app couldn't read. Retry or reconnect if access changed."
+    else -> "Scooter data couldn't be read. Retry or reconnect if access changed."
+}
+
+fun scooterFetchNeedsReconnect(error: Exception, configuration: AppConfiguration): Boolean =
+    error is OAuthLoginRequired || (configuration.oauthSessionId != null && error is ClientException && error.statusCode in setOf(401, 403))
 
 fun userMessage(error: Exception, configuration: AppConfiguration): String {
     if (error is ClientException && error.statusCode == 403 && configuration.oauthSessionId != null && configuration.needsPermissionUpgrade) {

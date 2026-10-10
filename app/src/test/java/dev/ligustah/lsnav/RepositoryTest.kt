@@ -39,10 +39,16 @@ class RepositoryTest {
     }
     @Test fun `scooters map physical metadata without guessing from nickname`() = runBlocking {
         MockWebServer().use { server ->
-            server.enqueue(MockResponse().setBody("""[{"id":7,"name":"Bluebird","vin":"VIN7","color":"red","color_id":"red-1","color_hex":"#cc0000","model":"uno","license_plate":"AB-123","online":true,"last_seen_at":"2025-01-02T03:04:05Z","images":{"front":"https://sunshine.example/front.png","left":null,"right":"https://sunshine.example/right.png"}}]"""))
-            val scooter = NavigationRepository { provider(server) }.scooters(config).single()
+            server.enqueue(MockResponse().setBody("""[{"id":7,"name":"Bluebird","vin":"VIN7","color":"red","color_id":"red-1","color_hex":"#cc0000","model":{"model_name":"unu scooter 2.0","engine_power_rating_w":4000,"speed_class_kmh":45,"construction_year":2024,"color":"red","full_name":"unu scooter 2.0, 4000W, 2024, red"},"license_plate":"AB-123","online":true,"last_seen_at":"2025-01-02T03:04:05Z","images":{"front":"https://sunshine.example/front.png","left":null,"right":"https://sunshine.example/right.png"}},{"id":8,"name":"No model metadata","model":null}]"""))
+            val scooters = NavigationRepository { provider(server) }.scooters(config)
+            val scooter = scooters.first()
             assertEquals("red", scooter.color)
-            assertEquals("uno", scooter.model)
+            assertEquals("unu scooter 2.0, 4000W, 2024, red", scooter.model?.displayName)
+            assertEquals(4000, scooter.model?.enginePowerRatingW)
+            assertEquals(45, scooter.model?.speedClassKmh)
+            assertEquals(2024, scooter.model?.constructionYear)
+            assertEquals("red", scooter.model?.color)
+            assertNull(scooters.last().model)
             assertEquals("AB-123", scooter.licensePlate)
             assertEquals("https://sunshine.example/front.png", scooter.images.front)
             assertEquals("2025-01-02T03:04:05Z", scooter.lastSeenAt)
@@ -83,6 +89,21 @@ class RepositoryTest {
             assertEquals("DELETE", delete.method)
             assertEquals("/api/v1/saved_destinations/12", delete.path)
         }
+    }
+
+    @Test fun `scooter list failures classify access and network errors without exposing response details`() {
+        val oauth = config.copy(token = "", oauthSessionId = "session", grantedScopes = setOf("read"))
+        val denied = ClientException("response payload token=hidden", 403)
+        val deniedMessage = scooterFetchMessage(denied, oauth)
+        assertTrue(deniedMessage.contains("HTTP 403"))
+        assertFalse(deniedMessage.contains("response payload"))
+        assertTrue(scooterFetchNeedsReconnect(denied, oauth))
+
+        val networkMessage = scooterFetchMessage(java.io.IOException("https://example.org?token=hidden&lat=52.5"), config)
+        assertTrue(networkMessage.contains("Couldn't reach Sunshine"))
+        assertFalse(networkMessage.contains("hidden"))
+        assertFalse(networkMessage.contains("52.5"))
+        assertFalse(scooterFetchNeedsReconnect(java.io.IOException("offline"), config))
     }
 
     @Test fun `authorization failures expose a useful message`() = runBlocking {

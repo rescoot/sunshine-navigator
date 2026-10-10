@@ -9,6 +9,16 @@ data class Coordinates(val latitude: Double, val longitude: Double) {
 
 data class PlaceResult(val coordinates: Coordinates, val label: String)
 data class ScooterImages(val front: String? = null, val left: String? = null, val right: String? = null)
+data class ScooterModelInfo(
+    val modelName: String? = null,
+    val enginePowerRatingW: Int? = null,
+    val speedClassKmh: Int? = null,
+    val constructionYear: Int? = null,
+    val color: String? = null,
+    val fullName: String? = null
+) {
+    val displayName: String? get() = fullName?.takeIf(String::isNotBlank) ?: modelName?.takeIf(String::isNotBlank)
+}
 data class ScooterSummary(
     val id: Long,
     val name: String,
@@ -18,7 +28,7 @@ data class ScooterSummary(
     val color: String? = null,
     val colorId: String? = null,
     val colorHex: String? = null,
-    val model: String? = null,
+    val model: ScooterModelInfo? = null,
     val licensePlate: String? = null,
     val lastSeenAt: String? = null,
     val images: ScooterImages = ScooterImages()

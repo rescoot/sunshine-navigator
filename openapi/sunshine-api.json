@@ -28,6 +28,17 @@
       }
     },
     "schemas": {
+      "ScooterModel": {
+        "type": "object",
+        "properties": {
+          "model_name": { "type": "string", "nullable": true },
+          "engine_power_rating_w": { "type": "integer", "format": "int32", "nullable": true },
+          "speed_class_kmh": { "type": "integer", "format": "int32", "nullable": true },
+          "construction_year": { "type": "integer", "format": "int32", "nullable": true },
+          "color": { "type": "string", "nullable": true },
+          "full_name": { "type": "string", "nullable": true }
+        }
+      },
       "ScooterBase": {
         "type": "object",
         "properties": {
@@ -150,7 +161,7 @@
                 "description": "When alarm state was last updated"
               },
               "color_hex": { "type": "string", "nullable": true },
-              "model": { "type": "string", "nullable": true },
+              "model": { "$ref": "#/components/schemas/ScooterModel", "nullable": true },
               "license_plate": { "type": "string", "nullable": true },
               "images": {
                 "type": "object",

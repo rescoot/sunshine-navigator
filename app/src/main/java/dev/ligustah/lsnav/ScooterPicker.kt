@@ -66,7 +66,7 @@ fun ScooterTile(scooter: ScooterSummary, isDefault: Boolean, enabled: Boolean, o
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             ScooterArt(scooter, Modifier.fillMaxWidth().height(126.dp))
             Text(scooter.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            scooter.model?.takeIf(String::isNotBlank)?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            scooter.model?.displayName?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             scooter.licensePlate?.takeIf(String::isNotBlank)?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(if (online) "Online" else if (scooter.online == false) "Offline · refresh or choose another" else "Status unknown", style = MaterialTheme.typography.bodySmall,

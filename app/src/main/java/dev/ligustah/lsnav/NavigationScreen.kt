@@ -32,6 +32,8 @@ fun NavigationScreen(
     model: NavigationViewModel = viewModel()
 ) {
     val state by model.state.collectAsStateWithLifecycle()
+    val sharedPreview = remember(sharedText) { sharedText?.takeIf(String::isNotBlank)?.let(::parseSharedPlacePreview) }
+    val displayedQuery = if (state.query == sharedText) sharedPreview?.label ?: state.query else state.query
     val lifecycleOwner = LocalLifecycleOwner.current
     val destinationSaver = remember { Saver<PlaceResult?, Any>(save = { place ->
         place?.let { mapOf("latitude" to it.coordinates.latitude, "longitude" to it.coordinates.longitude, "label" to it.label) }
@@ -173,8 +175,13 @@ fun NavigationScreen(
                 !state.configuration.isAuthenticated -> RecoveryCard("Connect Sunshine to choose a scooter. This place will stay here.", "Connect Sunshine", onSettings)
                 state.configuration.needsPermissionUpgrade && state.configuration.missingOAuthScopes.contains("scooter_control") -> RecoveryCard("Reconnect and approve scooter navigation access to send a place.", "Reconnect", onSettings)
                 state.scooters.loading && state.scooters.value == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
-                state.scooters.error != null && state.scooters.value == null -> RecoveryCard("${state.scooters.error}. Your place is safe.", "Refresh scooters", { model.fetchScooters(true) })
-                state.scooters.value.isNullOrEmpty() -> RecoveryCard("No scooters are available to this account. Check Sunshine access, then refresh.", "Refresh scooters", { model.fetchScooters(true) })
+                state.scooters.error != null -> RecoveryCard(
+                    "${state.scooters.error}. Your place is safe.",
+                    if (state.scooterReconnectRequired) "Reconnect with Sunshine" else "Refresh scooters",
+                    if (state.scooterReconnectRequired) onSettings else { { model.fetchScooters(true) } }
+                )
+                state.scooters.value == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                state.scooters.value?.isEmpty() == true -> RecoveryCard("No scooters are available to this account. Check Sunshine access, then refresh.", "Refresh scooters", { model.fetchScooters(true) })
                 else -> ScooterPicker(state.scooters.value.orEmpty(), !state.sending && !state.incomingResolutionRequired && (state.uncertainTarget == null || state.uncertainCheckedDestination != null) && !state.pendingCommandLoading && !state.pendingCommandForOtherAccount, state.defaultScooterId,
                     onSelect = { scooter ->
                         model.selectScooter(scooter)
@@ -203,26 +210,27 @@ fun NavigationScreen(
             UncertainRecovery(state, model)
             if (state.pendingCommandLoading) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Restoring previous request status…") }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column { Text("Navigate", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold); Text("A place for your scooter") }
-                Row {
-                    IconButton(onClick = model::refresh, enabled = state.configuration.isAuthenticated && !state.sending) { Icon(Icons.Default.Refresh, "Refresh places and scooters") }
-                    IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Account and settings") }
-                }
+                BrandHeader(Modifier.weight(1f))
+                IconButton(onClick = model::refresh, enabled = state.configuration.isAuthenticated && !state.sending) { Icon(Icons.Default.Refresh, "Refresh places and scooters") }
+                IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Account and settings") }
             }
             if (state.incomingResolutionRequired) Text("Resolving the newest shared place…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
             if (!state.configuration.isAuthenticated) {
-                Card { Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Your next stop, simply.", style = MaterialTheme.typography.headlineSmall)
-                    Text("Connect Sunshine to see your scooters and send a destination. Nothing is sent until you tap a scooter.")
-                    Button(onClick = onSettings, modifier = Modifier.fillMaxWidth()) { Text("Get started") }
-                } }
+                Card(shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                    Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Your next stop, simply.", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        Text("Connect Sunshine to see your scooters and send a destination. Nothing is sent until you tap a scooter.")
+                        Button(onClick = onSettings, modifier = Modifier.fillMaxWidth()) { Text("Get started") }
+                    }
+                }
             } else {
                 if (state.configuration.needsPermissionUpgrade) Card { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Reconnect to finish access", style = MaterialTheme.typography.titleMedium)
                     Text("This session is missing ${state.configuration.missingOAuthScopes.joinToString()} access. Reconnect only when you need that capability.")
                     OutlinedButton(onClick = onSettings) { Text("Review connection") }
                 } }
-                OutlinedTextField(value = state.query, onValueChange = { value ->
+                Text("Choose a place, then tap a scooter to send it.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(value = displayedQuery, onValueChange = { value ->
                     val correctingRequestId = incomingRequestId?.takeIf {
                         !sharedText.isNullOrBlank() && state.currentIncomingRequestId == it
                     }
@@ -337,7 +345,7 @@ fun NavigationScreen(
 
 @Composable
 private fun LibraryRow(place: SavedPlace, badge: String, onClick: () -> Unit, onManage: (() -> Unit)?) {
-    Card(Modifier.fillMaxWidth()) {
+    Card(Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
                 Text(place.place.label, style = MaterialTheme.typography.titleMedium)
@@ -351,16 +359,19 @@ private fun LibraryRow(place: SavedPlace, badge: String, onClick: () -> Unit, on
 
 @Composable
 private fun PlaceRow(title: String, detail: String, onClick: () -> Unit) {
-    Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) { Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.Start) {
+    Card(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) { Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.Start) {
         Text(title, style = MaterialTheme.typography.titleMedium); Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     } }
 }
 
 @Composable
 private fun RecoveryCard(message: String, action: String, onAction: () -> Unit) {
-    Card { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(message, style = MaterialTheme.typography.bodyLarge); OutlinedButton(onClick = onAction) { Text(action) }
-    } }
+    Card(shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(message, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
+            Button(onClick = onAction) { Text(action) }
+        }
+    }
 }
 
 @Composable
