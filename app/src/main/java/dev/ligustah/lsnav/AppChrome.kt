@@ -2,7 +2,13 @@ package dev.ligustah.lsnav
 
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Place
+import androidx.compose.material3.Icon
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,7 +32,7 @@ fun SharedPlacePreviewCard(text: String?, supportingText: String) {
         colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = .12f), contentColor = androidx.compose.ui.graphics.Color.White)
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("SHARED PLACE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = androidx.compose.ui.graphics.Color(0xFFA5B4FC))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { Icon(Icons.Default.Place, null, Modifier.size(22.dp), tint = androidx.compose.ui.graphics.Color(0xFFA5B4FC)); Text("SHARED PLACE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = androidx.compose.ui.graphics.Color(0xFFA5B4FC)) }
             Text(preview.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             preview.coordinates?.let { Text(it.display(), style = MaterialTheme.typography.bodySmall, color = androidx.compose.ui.graphics.Color(0xFFA5B4FC)) }
             Text(supportingText, style = MaterialTheme.typography.bodySmall, color = androidx.compose.ui.graphics.Color(0xFFA5B4FC))

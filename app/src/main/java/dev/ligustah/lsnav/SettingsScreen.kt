@@ -13,6 +13,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -75,7 +80,7 @@ fun WelcomeScreen(sharedText: String?, busy: Boolean = false, error: String? = n
     Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Indigo800, Color(0xFF312E81)))).statusBarsPadding().navigationBarsPadding().imePadding().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         StepDots(0, Modifier.padding(top = 20.dp))
         Column(Modifier.weight(1f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Box(Modifier.size(224.dp).background(Brush.radialGradient(listOf(Color(0xFFA5B4FC).copy(alpha = .15f), Color.Transparent))), contentAlignment = Alignment.Center) { SunMark(Modifier.size(128.dp), animated = true) }
+            Box(Modifier.size(224.dp).background(Brush.radialGradient(listOf(Color(0xFF818CF8).copy(alpha = .25f), Color.Transparent))), contentAlignment = Alignment.Center) { SunMark(Modifier.size(128.dp), animated = true) }
             Text("Sunshine Navigator", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
             Text("Send places from any map app straight to your scooter's dashboard.", Modifier.padding(top = 16.dp), color = Color(0xFFA5B4FC), fontSize = 16.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
@@ -93,10 +98,11 @@ fun SetupScootersScreen(state: SettingsState, onSelect: (ScooterSummary) -> Unit
     val context = LocalContext.current
     Column(Modifier.fillMaxSize()) {
         NavigatorBar(loading = state.scooters.loading || state.busy)
-        Column(Modifier.weight(1f).widthIn(max = 600.dp).fillMaxWidth().align(Alignment.CenterHorizontally).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+        Column(Modifier.widthIn(max = 600.dp).fillMaxWidth().align(Alignment.TopCenter).verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 108.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             StepDots(1)
             Text("Pick your scooter", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            Text("Use one by default, or choose each time you send.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Use one by default, or choose each time you send.", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             when {
                 state.scooters.loading && state.scooters.value == null -> { ScooterSkeletons(); ScooterSkeletons() }
                 state.scooters.error != null -> ProblemPanel("Couldn't load your scooters", state.scooters.error, if (state.scooterReconnectRequired) "Reconnect" else "Retry", if (state.scooterReconnectRequired) onReconnect else onRefresh)
@@ -108,10 +114,13 @@ fun SetupScootersScreen(state: SettingsState, onSelect: (ScooterSummary) -> Unit
                 else -> ScooterPicker(state.scooters.value.orEmpty(), !state.busy, state.draft.scooterId, onSelect, selectionMode = true)
             }
             SunshineCard(Modifier.fillMaxWidth().clickable(enabled = !state.busy, onClick = onAsk), panel = true, accent = if (state.draft.scooterId == null) Color(0xFF4F46E5) else null) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { Text("▦  Ask every time", fontWeight = FontWeight.SemiBold); Text("Choose a scooter each time you send.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { Icon(Icons.Default.GridView, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.primary); Text("Ask every time", fontWeight = FontWeight.SemiBold) }; Text("Choose a scooter each time you send.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         }
-        SunshineButton(onContinue, enabled = !state.busy && state.scooters.value != null && state.scooters.error == null, modifier = Modifier.navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp).fillMaxWidth()) { Text("Continue") }
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Brush.verticalGradient(listOf(MaterialTheme.colorScheme.background.copy(alpha = 0f), MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.background))).navigationBarsPadding().padding(start = 20.dp, end = 20.dp, top = 28.dp, bottom = 12.dp)) {
+            SunshineButton(onContinue, enabled = !state.busy && state.scooters.value != null && state.scooters.error == null, modifier = Modifier.fillMaxWidth()) { Text("Continue") }
+        }
+        }
     }
 }
 
@@ -122,10 +131,10 @@ fun ReadyScreen(busy: Boolean = false, error: String? = null, onBack: (() -> Uni
         Column(Modifier.fillMaxSize().navigationBarsPadding().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             StepDots(2, Modifier.padding(top = 12.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                SunMark(Modifier.size(72.dp))
-                Row(Modifier.padding(vertical = 32.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) { SunshineBadge("↗ Send to scooter"); Text("→", color = MaterialTheme.colorScheme.primary); SunshineBadge("➤ Dashboard", BadgeTone.Neutral) }
+                ReadyIllustration(Modifier.fillMaxWidth().height(216.dp))
+                Spacer(Modifier.height(24.dp))
                 Text("You're set", fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                Text("In Google Maps or any map app, tap Share → Send to scooter. Or search right here.", Modifier.padding(top = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Text("In Google Maps or any map app, tap Share, then Send to scooter. Or search right here.", Modifier.padding(top = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
             error?.let { Text(it, Modifier.padding(bottom = 12.dp), color = MaterialTheme.colorScheme.error) }
             SunshineButton(onStart, Modifier.fillMaxWidth(), enabled = !busy) { Text("Start navigating") }
@@ -138,7 +147,7 @@ fun ReadyScreen(busy: Boolean = false, error: String? = null, onBack: (() -> Uni
 fun AccountScreen(state: SettingsState, onBack: () -> Unit = {}, onSelect: (ScooterSummary) -> Unit = {}, onAsk: () -> Unit = {}, onSave: () -> Unit = {}, onReconnect: () -> Unit = {}, onConnection: () -> Unit = {}, onSignOut: () -> Unit = {}, onRefresh: () -> Unit = {}) {
     val configuration = state.profile.configuration
     Column(Modifier.fillMaxSize()) {
-        NavigatorBar("Account", state.busy || state.scooters.loading, onBack)
+        NavigatorBar("Settings", state.busy || state.scooters.loading, onBack)
         Column(Modifier.widthIn(max = 600.dp).fillMaxWidth().align(Alignment.CenterHorizontally).navigationBarsPadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             SunshineCard(panel = true) { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Account", fontWeight = FontWeight.Bold, fontSize = 18.sp)
@@ -159,24 +168,18 @@ fun AccountScreen(state: SettingsState, onBack: () -> Unit = {}, onSelect: (Scoo
             } }
             SunshineCard(panel = true) { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Default scooter", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    state.scooters.value.orEmpty().forEach { scooter ->
-                        SunshineCard(Modifier.width(124.dp).clickable(enabled = !state.busy) { onSelect(scooter) }, panel = true, accent = if (scooter.id == state.draft.scooterId) Color(0xFF4F46E5) else null) {
-                            Column(Modifier.fillMaxWidth().padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                ScooterArt(scooter, Modifier.fillMaxWidth().height(56.dp))
-                                Text(scooter.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                            }
-                        }
-                    }
-                    SunshineCard(Modifier.width(124.dp).clickable(enabled = !state.busy, onClick = onAsk), panel = true, accent = if (state.draft.scooterId == null) Color(0xFF4F46E5) else null) {
-                        Column(Modifier.fillMaxWidth().padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) { Box(Modifier.height(56.dp), contentAlignment = Alignment.Center) { Text("▦", fontSize = 28.sp, color = MaterialTheme.colorScheme.primary) }; Text("Ask every time", fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
-                    }
-                }
+                DefaultScooterOptions(state.scooters.value.orEmpty(), state.draft.scooterId, !state.busy, onSelect, onAsk)
                 state.scooters.error?.let { ProblemPanel("Couldn't load your scooters", it, if (state.scooterReconnectRequired) "Reconnect" else "Retry", if (state.scooterReconnectRequired) onReconnect else onRefresh) }
                 SunshineButton(onSave, enabled = !state.busy) { Text("Save preference") }
                 state.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
             } }
-            SunshineCard(Modifier.fillMaxWidth(), panel = true) { TextButton(onConnection) { Text("Connection  ›") } }
+            SunshineCard(Modifier.fillMaxWidth(), panel = true) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(onClick = onConnection).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Icon(Icons.Default.Link, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Connection", Modifier.weight(1f), fontWeight = FontWeight.Medium)
+                    Icon(Icons.Default.ChevronRight, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             SunshineCard(Modifier.fillMaxWidth(), panel = true) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("About", fontWeight = FontWeight.Bold, fontSize = 18.sp); Text("Sunshine Navigator · ${BuildConfig.VERSION_NAME}"); Text("Uses Sunshine by rescoot", color = MaterialTheme.colorScheme.onSurfaceVariant); Text("Maps © OpenStreetMap © CARTO", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
             SunshineButton(onSignOut, enabled = !state.busy, tone = ButtonTone.Danger) { Text("Sign out") }
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -194,4 +197,33 @@ private fun ConnectionFields(state: SettingsState, model: SettingsViewModel, rec
     Text("Use a token from a trusted Sunshine server. It stays in this app's private, non-backed-up settings storage.", style = MaterialTheme.typography.bodySmall)
     OutlinedTextField(state.draft.token, model::updateToken, label = { Text("API token") }, visualTransformation = PasswordVisualTransformation(), enabled = !state.busy, singleLine = true, modifier = Modifier.fillMaxWidth())
     SunshineButton(model::connectManual, enabled = !state.busy && state.draft.token.isNotBlank(), tone = ButtonTone.Secondary) { Text("Connect with token") }
+}
+
+@Composable
+private fun DefaultScooterOptions(scooters: List<ScooterSummary>, selected: Long?, enabled: Boolean, onSelect: (ScooterSummary) -> Unit, onAsk: () -> Unit) {
+    val options = scooters.map { it as ScooterSummary? } + null
+    if (scooters.size <= 3) {
+        val columns = if (LocalDensity.current.fontScale >= 1.3f) 1 else 2
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            options.chunked(columns).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { scooter -> PreferenceChip(scooter, scooter?.id == selected, enabled, { if (scooter == null) onAsk() else onSelect(scooter) }, Modifier.weight(1f)) }
+                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+    } else LazyRow(contentPadding = PaddingValues(4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(options) { scooter -> PreferenceChip(scooter, scooter?.id == selected, enabled, { if (scooter == null) onAsk() else onSelect(scooter) }, Modifier.width(140.dp)) }
+    }
+}
+
+@Composable
+private fun PreferenceChip(scooter: ScooterSummary?, selected: Boolean, enabled: Boolean, onClick: () -> Unit, modifier: Modifier) {
+    SunshineCard(modifier.clickable(enabled = enabled, onClick = onClick), panel = true, accent = if (selected) Color(0xFF4F46E5) else null) {
+        Column(Modifier.fillMaxWidth().padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (scooter != null) ScooterArt(scooter, Modifier.fillMaxWidth().height(48.dp))
+            else Box(Modifier.height(48.dp), contentAlignment = Alignment.Center) { Icon(Icons.Default.GridView, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary) }
+            Text(scooter?.name ?: "Ask every time", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        }
+    }
 }
