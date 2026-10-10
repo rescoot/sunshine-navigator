@@ -88,7 +88,7 @@ class NavigationViewModel @JvmOverloads constructor(
                         searchGeneration++; searchJob?.cancel()
                         if (old?.accountKey != config.accountKey) favoriteJob?.cancel()
                         mutableState.value = mutableState.value.copy(
-                            configuration = config, configurationLoaded = true, sending = false, defaultScooterId = config.scooterId,
+                            configuration = config, configurationLoaded = true, sending = false, searching = false, defaultScooterId = config.scooterId,
                             query = if (old?.accountKey == config.accountKey) mutableState.value.query else "",
                             results = if (old?.accountKey == config.accountKey) mutableState.value.results else emptyList(),
                             resolvedIncomingText = if (old?.accountKey == config.accountKey) mutableState.value.resolvedIncomingText else null,
@@ -254,6 +254,7 @@ class NavigationViewModel @JvmOverloads constructor(
         destinationJob = viewModelScope.launch {
             try {
                 val destination = gateway.destination(config)
+                if (generation == destinationGeneration && mutableState.value.configuration == config) mutableState.value = mutableState.value.copy(destination = RemoteData.loaded(destination))
                 val value = destination.copy(place = destination.place?.let { resolver.label(it) })
                 if (generation == destinationGeneration && mutableState.value.configuration == config) mutableState.value = mutableState.value.copy(destination = RemoteData.loaded(value))
             } catch (error: CancellationException) { throw error
@@ -271,7 +272,9 @@ class NavigationViewModel @JvmOverloads constructor(
         mutableState.value = mutableState.value.copy(savedLocations = mutableState.value.savedLocations.refreshing())
         locationsJob = viewModelScope.launch {
             try {
-                val value = resolver.labelAll(gateway.savedLocations(config))
+                val places = gateway.savedLocations(config)
+                if (generation == locationsGeneration && mutableState.value.configuration == config) mutableState.value = mutableState.value.copy(savedLocations = RemoteData.loaded(places))
+                val value = resolver.labelAll(places)
                 if (generation == locationsGeneration && mutableState.value.configuration == config) mutableState.value = mutableState.value.copy(savedLocations = RemoteData.loaded(value))
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) {
@@ -291,6 +294,7 @@ class NavigationViewModel @JvmOverloads constructor(
         personalPlacesJob = viewModelScope.launch {
             try {
                 val places = gateway.personalPlaces(config, forceRefresh)
+                if (generation == personalGeneration && storedConfiguration?.accountKey == config.accountKey) mutableState.value = mutableState.value.copy(personalPlaces = RemoteData.loaded(places))
                 val all = places.favorites + places.recent
                 val labelled = all.zip(resolver.labelAll(all.map { it.place })) { saved, place -> saved.copy(place = place) }
                 val value = PersonalPlaces(labelled.take(places.favorites.size), labelled.drop(places.favorites.size))
@@ -531,9 +535,8 @@ class NavigationViewModel @JvmOverloads constructor(
     private fun dispatchCommand(proposed: CommandTarget, incomingRequestId: Long?) {
         val target = proposed.copy(requestKey = proposed.requestKey ?: java.util.UUID.randomUUID().toString())
         destinationGeneration++; destinationJob?.cancel()
-        locationsGeneration++; locationsJob?.cancel()
         val requestGeneration = ++commandGeneration
-        mutableState.value = mutableState.value.copy(sending = true, error = null, lastCommandOutcome = null, lastCommandIncomingRequestId = null, uncertainTarget = null, uncertainCheckedDestination = null)
+        mutableState.value = mutableState.value.copy(sending = true, destination = mutableState.value.destination.copy(loading = false), error = null, lastCommandOutcome = null, lastCommandIncomingRequestId = null, uncertainTarget = null, uncertainCheckedDestination = null)
         commandJob = viewModelScope.launch {
             var requestStarted = false
             try {

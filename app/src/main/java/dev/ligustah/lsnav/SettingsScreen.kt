@@ -60,7 +60,7 @@ fun SettingsScreen(model: SettingsViewModel = viewModel(), onSignIn: (String, St
     } else {
         AccountScreen(state, onBack, model::select, model::chooseOnDemand, model::save, login, { advanced = true }, model::signOut, { model.fetch(true); model.fetchAccount() })
     }
-    if (advanced) ModalBottomSheet(onDismissRequest = { advanced = false }) {
+    if (advanced) SunshineSheet(onDismissRequest = { advanced = false }) {
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Connection", fontSize = 20.sp, fontWeight = FontWeight.Bold)
             ConnectionFields(state, model, if (authenticated && state.profile.configuration.oauthSessionId != null) login else null)

@@ -10,6 +10,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.core.app.ApplicationProvider
 import coil.ImageLoader
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -70,6 +73,7 @@ class SunshineScreensTest(private val scene: String, private val dark: Boolean) 
                             "scooters_empty" -> SetupScootersScreen(setup.copy(scooters = RemoteData.loaded(emptyList())))
                             "ready" -> ReadyScreen()
                             "home" -> HomeScreen(state)
+                            "home_scrolled" -> HomeScreen(state.copy(personalPlaces = RemoteData.loaded(PersonalPlaces(state.personalPlaces.value!!.favorites, (1L..8L).map { SavedPlace(it + 10, place.copy(label = "Recent place $it"), false) }))))
                             "home_empty" -> HomeScreen(state.copy(destination = RemoteData.loaded(NavigationTarget()), savedLocations = RemoteData.loaded(emptyList()), personalPlaces = RemoteData.loaded(PersonalPlaces())))
                             "search" -> HomeScreen(state, query = "Tiergarten", results = listOf(place, park))
                             "send_idle" -> SendScreen(state, place, shared = true, enabled = true)
@@ -84,9 +88,12 @@ class SunshineScreensTest(private val scene: String, private val dark: Boolean) 
                                 SendScreen(failed, place, recovery = { UncertainPanel(failed, docked = true) })
                             }
                             "settings" -> AccountScreen(setup.copy(profile = AppProfile(config, true)))
-                            "editor" -> {
+                            "editor", "editor_existing" -> {
                                 HomeScreen(state)
-                                ModalBottomSheet(onDismissRequest = {}) { PlaceEditorContent("Café am Tiergarten", place) }
+                                SunshineSheet(onDismissRequest = {}) {
+                                    if (scene == "editor_existing") PlaceEditorContent("Home", home, title = "Edit place", actions = { PlaceEditorActions(true) })
+                                    else PlaceEditorContent("Café am Tiergarten", place)
+                                }
                             }
                         }
                     }
@@ -96,13 +103,17 @@ class SunshineScreensTest(private val scene: String, private val dark: Boolean) 
         compose.waitForIdle()
         Thread.sleep(600)
         compose.waitForIdle()
+        if (scene == "home_scrolled") {
+            compose.onNodeWithTag("home-scroll").performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, 180f) }
+            compose.waitForIdle()
+        }
         val directory = File("build/outputs/roborazzi").apply { mkdirs() }
         val path = File(directory, "${scene}_${if (dark) "dark" else "light"}.png").path
-        if (scene == "editor") captureScreenRoboImage(path) else compose.onRoot().captureRoboImage(path)
+        if (scene.startsWith("editor")) captureScreenRoboImage(path) else compose.onRoot().captureRoboImage(path)
         loader.shutdown()
     }
 
     companion object {
-        @JvmStatic @ParameterizedRobolectricTestRunner.Parameters(name = "{0}-{1}") fun scenes(): List<Array<Any>> = listOf("welcome", "welcome_share", "scooters", "scooters_error", "scooters_empty", "ready", "home", "home_empty", "search", "send_idle", "send_sending", "send_accepted", "send_uncertain", "send_failed", "settings", "editor").flatMap { scene -> listOf(arrayOf(scene, false), arrayOf(scene, true)) }
+        @JvmStatic @ParameterizedRobolectricTestRunner.Parameters(name = "{0}-{1}") fun scenes(): List<Array<Any>> = listOf("welcome", "welcome_share", "scooters", "scooters_error", "scooters_empty", "ready", "home", "home_scrolled", "home_empty", "search", "send_idle", "send_sending", "send_accepted", "send_uncertain", "send_failed", "settings", "editor", "editor_existing").flatMap { scene -> listOf(arrayOf(scene, false), arrayOf(scene, true)) }
     }
 }

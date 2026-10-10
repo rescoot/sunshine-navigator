@@ -118,6 +118,50 @@ class ViewModelTest {
         assertEquals(0, gateway.writes)
     }
 
+    @Test fun `sending during a scooter places read does not strand its loading flag`() = runTest(dispatcher) {
+        for (fails in listOf(false, true)) {
+            val gateway = FakeGateway()
+            gateway.locations[1L] = CompletableDeferred()
+            if (fails) gateway.writeError = java.io.IOException("Interrupted")
+            val model = model(gateway)
+            runCurrent()
+            assertTrue(model.state.value.savedLocations.loading)
+            model.send(place)
+            runCurrent()
+            assertFalse(model.state.value.destination.loading)
+            gateway.write.complete(Unit)
+            runCurrent()
+            gateway.locations.getValue(1L).complete(listOf(place))
+            runCurrent()
+            assertEquals(listOf(place), model.state.value.savedLocations.value)
+            assertFalse(model.state.value.savedLocations.loading)
+            assertFalse(model.state.value.networkLoading)
+            assertEquals(1, gateway.writes)
+        }
+    }
+
+    @Test fun `places are usable before optional reverse lookup finishes`() = runTest(dispatcher) {
+        val point = PlaceResult(Coordinates(52.5, 13.3), "52.5,13.3")
+        val gateway = FakeGateway()
+        gateway.firstRead.complete(NavigationTarget(point))
+        gateway.locations[1L] = CompletableDeferred(listOf(point))
+        val address = CompletableDeferred<String>()
+        val labels = CoordinateResolver(object : LocationLookup {
+            override suspend fun search(query: String) = emptyList<PlaceResult>()
+            override suspend fun reverse(coordinates: Coordinates) = address.await()
+        })
+        val model = NavigationViewModel(application, SavedStateHandle(), gateway, labels, MutableStateFlow(config), MemoryPending())
+        runCurrent()
+        assertEquals(listOf(point), model.state.value.savedLocations.value)
+        assertEquals(point, model.state.value.destination.value?.place)
+        assertFalse(model.state.value.networkLoading)
+        address.complete("Messedamm 26, Berlin")
+        runCurrent()
+        assertEquals("Messedamm 26, Berlin", model.state.value.savedLocations.value?.single()?.label)
+        assertFalse(model.state.value.networkLoading)
+        assertEquals(0, gateway.writes)
+    }
+
     @Test fun `navigation serializes writes and ignores cancelled initial reads`() = runTest(dispatcher) {
         val gateway = FakeGateway()
         val model = model(gateway)

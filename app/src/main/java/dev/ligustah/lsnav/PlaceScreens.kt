@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -38,16 +39,11 @@ internal val NavigationState.networkLoading: Boolean get() = searching || sendin
 fun HomeScreen(state: NavigationState, query: String = state.query, results: List<PlaceResult> = state.results, onQuery: (String) -> Unit = {}, onOpen: (PlaceResult, Long?) -> Unit = { _, _ -> }, onEdit: (SavedPlace) -> Unit = {}, onStar: (SavedPlace) -> Unit = {}, onAdd: () -> Unit = {}, onSettings: () -> Unit = {}, onRefresh: () -> Unit = {}, onClear: () -> Unit = {}, onChange: () -> Unit = {}, recovery: @Composable () -> Unit = {}) {
     val searchInteraction = remember { MutableInteractionSource() }
     val searchFocused by searchInteraction.collectIsFocusedAsState()
+    val scroll = rememberScrollState()
     Column(Modifier.fillMaxSize()) {
         NavigatorBar(loading = state.networkLoading, onRefresh = onRefresh, onAccount = onSettings, hero = true)
-        Box(Modifier.fillMaxWidth().height(92.dp)) {
-            val night = MaterialTheme.colorScheme.background == Color(0xFF0F0E1F)
-            Box(Modifier.fillMaxWidth().height(74.dp).background(if (night) Indigo800 else Color(0xFF4338CA), RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)))
-            Box(Modifier.fillMaxWidth().height(72.dp).background(if (night) Indigo950 else Indigo800, RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)))
-            OutlinedTextField(query, onQuery, placeholder = { Text("Where to?") }, leadingIcon = { Icon(Icons.Default.Search, null) }, trailingIcon = { if (query.isNotEmpty()) IconButton({ onQuery("") }) { Icon(Icons.Default.Close, "Clear search", Modifier.size(22.dp)) } }, singleLine = true, enabled = !state.sending,
-                interactionSource = searchInteraction, shape = RoundedCornerShape(12.dp), colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surface, unfocusedContainerColor = MaterialTheme.colorScheme.surface, unfocusedBorderColor = Color.Transparent), modifier = Modifier.align(Alignment.BottomCenter).widthIn(max = 600.dp).fillMaxWidth().padding(horizontal = 20.dp).shadow(if (searchFocused) 6.dp else 3.dp, RoundedCornerShape(12.dp)))
-        }
-        Column(Modifier.weight(1f).widthIn(max = 600.dp).fillMaxWidth().align(Alignment.CenterHorizontally).imePadding().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+        Column(Modifier.widthIn(max = 600.dp).fillMaxSize().align(Alignment.TopCenter).imePadding().navigationBarsPadding().testTag("home-scroll").verticalScroll(scroll).padding(horizontal = 20.dp).padding(top = 108.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             recovery()
             AnimatedVisibility(results.isNotEmpty(), enter = fadeIn() + expandVertically()) { GroupedPlaces(results, onOpen = { onOpen(it, null) }, leading = Icons.Default.Place) }
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -106,9 +102,20 @@ fun HomeScreen(state: NavigationState, query: String = state.query, results: Lis
             if (state.configuration.isReady) {
                 SectionTitle("On the scooter")
                 state.savedLocations.error?.let { ProblemPanel("Couldn't load scooter places", it, "Retry", onRefresh) }
+                if (state.savedLocations.loading && state.savedLocations.value == null) Text("Loading scooter places…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (state.savedLocations.value?.isEmpty() == true && !state.savedLocations.loading && state.savedLocations.error == null) Text("No saved places on this scooter.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (state.savedLocations.value.orEmpty().isNotEmpty()) GroupedPlaces(state.savedLocations.value.orEmpty(), { onOpen(it, null) }, Icons.Default.ElectricScooter)
             }
             if (personal != null && personal.favorites.isEmpty() && personal.recent.isEmpty()) EmptyPlaces()
+        }
+        Box(Modifier.fillMaxWidth().height(108.dp).background(Brush.verticalGradient(.5f to MaterialTheme.colorScheme.background, 1f to MaterialTheme.colorScheme.background.copy(alpha = 0f))))
+        Box(Modifier.fillMaxWidth().height(92.dp)) {
+            val night = MaterialTheme.colorScheme.background == Color(0xFF0F0E1F)
+            Box(Modifier.fillMaxWidth().height(74.dp).background(if (night) Indigo800 else Color(0xFF4338CA), RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)))
+            Box(Modifier.fillMaxWidth().height(72.dp).background(if (night) Indigo950 else Indigo800, RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)))
+            OutlinedTextField(query, onQuery, placeholder = { Text("Where to?") }, leadingIcon = { Icon(Icons.Default.Search, null) }, trailingIcon = { if (query.isNotEmpty()) IconButton({ onQuery("") }) { Icon(Icons.Default.Close, "Clear search", Modifier.size(22.dp)) } }, singleLine = true, enabled = !state.sending,
+                interactionSource = searchInteraction, shape = RoundedCornerShape(12.dp), colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surface, unfocusedContainerColor = MaterialTheme.colorScheme.surface, unfocusedBorderColor = Color.Transparent), modifier = Modifier.align(Alignment.BottomCenter).widthIn(max = 600.dp).fillMaxWidth().padding(horizontal = 20.dp).shadow(if (searchFocused) 6.dp else 3.dp, RoundedCornerShape(12.dp)))
+        }
         }
     }
 }
@@ -210,14 +217,34 @@ fun AcceptedPanel(name: String, onDone: () -> Unit = {}, onAnother: () -> Unit =
 }
 
 @Composable
-fun PlaceEditorContent(label: String, place: PlaceResult, saving: Boolean = false, error: String? = null, onLabel: (String) -> Unit = {}, onSave: () -> Unit = {}, onCancel: () -> Unit = {}, actions: @Composable () -> Unit = {}) {
-    Column(Modifier.fillMaxWidth().imePadding().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Save place", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        OutlinedTextField(label, onLabel, label = { Text("Name") }, singleLine = true, enabled = !saving, modifier = Modifier.fillMaxWidth())
+fun PlaceEditorActions(isFavorite: Boolean, enabled: Boolean = true, onToggle: () -> Unit = {}, onDelete: () -> Unit = {}) {
+    Surface(shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .35f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))) {
+        Column {
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onToggle).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(if (isFavorite) Icons.Default.StarBorder else Icons.Default.Star, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                Text(if (isFavorite) "Remove from favourites" else "Add to favourites", style = MaterialTheme.typography.bodyMedium)
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(enabled = enabled, role = androidx.compose.ui.semantics.Role.Button, onClick = onDelete).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(Icons.Default.DeleteOutline, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.error)
+                Text("Delete saved place", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+            }
+        }
+    }
+}
+
+@Composable
+fun PlaceEditorContent(label: String, place: PlaceResult, saving: Boolean = false, error: String? = null, title: String = "Save place", onLabel: (String) -> Unit = {}, onSave: () -> Unit = {}, onCancel: () -> Unit = {}, actions: @Composable () -> Unit = {}) {
+    Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        OutlinedTextField(label, onLabel, label = { Text("Name") }, singleLine = true, enabled = !saving, shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth())
         Text(place.coordinates.display(), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        actions()
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(0.dp)) { actions() }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        SunshineButton(onSave, enabled = label.isNotBlank() && !saving) { Text("Save") }
-        TextButton(onCancel, enabled = !saving) { Text("Cancel") }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            SunshineButton(onCancel, Modifier.weight(1f), enabled = !saving, tone = ButtonTone.Secondary) { Text("Cancel") }
+            SunshineButton(onSave, Modifier.weight(1f), enabled = label.isNotBlank() && !saving) { Text(if (saving) "Saving…" else "Save") }
+        }
     }
 }

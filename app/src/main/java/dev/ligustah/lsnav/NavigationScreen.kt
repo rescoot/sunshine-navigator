@@ -191,7 +191,7 @@ fun NavigationScreen(
             onAdd = { addingFavorite = true },
             onSettings = onSettings, onRefresh = model::refresh, onClear = { clearWarning = true }, onChange = { showBrowseVehicles = true }, recovery = { recovery(false) })
     }
-    if (showBrowseVehicles) ModalBottomSheet(onDismissRequest = { showBrowseVehicles = false }) {
+    if (showBrowseVehicles) SunshineSheet(onDismissRequest = { showBrowseVehicles = false }) {
         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Browse scooter places", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text("Read-only. Your default stays the same.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -200,7 +200,7 @@ fun NavigationScreen(
             }
         }
     }
-    if (addingFavorite) ModalBottomSheet(onDismissRequest = { addingFavorite = false }) {
+    if (addingFavorite) SunshineSheet(onDismissRequest = { addingFavorite = false }) {
         Column(Modifier.fillMaxWidth().imePadding().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Add favourite", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             OutlinedTextField(displayedQuery, queryChanged, placeholder = { Text("Search or paste a map link") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
@@ -210,20 +210,19 @@ fun NavigationScreen(
         }
     }
     visibleFavoriteDraft?.let { place ->
-        ModalBottomSheet(onDismissRequest = { if (!state.favoriteEditor.saving) favoriteDraftPlace = null }) {
+        SunshineSheet(onDismissRequest = { if (!state.favoriteEditor.saving) favoriteDraftPlace = null }) {
             PlaceEditorContent(favoriteLabel, place, state.favoriteEditor.saving, state.favoriteEditor.error,
-                onLabel = { favoriteLabel = it }, onSave = {
+                title = if (favoriteDraftId != null) "Edit place" else "Save place", onLabel = { favoriteLabel = it }, onSave = {
                     model.editFavorite(favoriteDraftId, FavoriteDraft(favoriteLabel.trim(), place)); model.saveFavorite()
                 }, onCancel = { favoriteDraftPlace = null; model.editFavorite(null, null) }, actions = {
                     if (favoriteDraftId != null) {
-                        TextButton(onClick = {
+                        PlaceEditorActions(favoriteDraftIsFavorite, enabled = !state.favoriteEditor.saving, onToggle = {
                             val saved = (state.personalPlaces.value?.favorites.orEmpty() + state.personalPlaces.value?.recent.orEmpty()).firstOrNull { it.id == favoriteDraftId }
                             if (saved != null) { model.editFavorite(saved.id, FavoriteDraft(favoriteLabel.trim(), place)); model.setFavorite(saved, !favoriteDraftIsFavorite) }
-                        }, enabled = !state.favoriteEditor.saving) { Text(if (favoriteDraftIsFavorite) "Remove from favourites" else "Add to favourites") }
-                        TextButton(onClick = {
+                        }, onDelete = {
                             val saved = (state.personalPlaces.value?.favorites.orEmpty() + state.personalPlaces.value?.recent.orEmpty()).firstOrNull { it.id == favoriteDraftId }
                             if (saved != null) deleteFavoritePending = saved
-                        }, enabled = !state.favoriteEditor.saving) { Text("Delete saved place") }
+                        })
                     }
                     if (state.configuration.favoritePermission == PermissionCapability.UpgradeRequired) TextButton(onSettings, enabled = !state.favoriteEditor.saving) { Text("Reconnect to edit favourites") }
                 })

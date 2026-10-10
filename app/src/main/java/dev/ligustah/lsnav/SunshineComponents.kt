@@ -49,6 +49,16 @@ enum class ButtonTone { Primary, Secondary, Danger, Welcome }
 
 @Composable
 fun SunshineButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, tone: ButtonTone = ButtonTone.Primary, content: @Composable RowScope.() -> Unit) {
+    if (tone == ButtonTone.Secondary) {
+        OutlinedButton(onClick, modifier.heightIn(min = 48.dp), enabled = enabled,
+            shape = RoundedCornerShape(10.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (enabled) 1f else .4f)),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, content = content)
+        }
+        return
+    }
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val focused by interaction.collectIsFocusedAsState()
@@ -63,11 +73,27 @@ fun SunshineButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: 
     }
     val border = when (tone) { ButtonTone.Danger -> Color(0xFF991B1B); ButtonTone.Secondary -> Color(0xFF9CA3AF); ButtonTone.Welcome -> Indigo950.copy(alpha = .4f); else -> Indigo800 }
     val foreground = when (tone) { ButtonTone.Welcome -> Indigo800; ButtonTone.Secondary -> MaterialTheme.colorScheme.onSurface; else -> Color.White }
-    Box(modifier.heightIn(min = 48.dp).border(if (focused) 2.dp else if (tone == ButtonTone.Secondary) 1.dp else 0.dp, if (focused) Color(0xFF818CF8) else if (tone == ButtonTone.Secondary) Color(0xFFD1D5DB) else Color.Transparent, RoundedCornerShape(6.dp)).offset(y = down.dp).alpha(if (enabled) 1f else .5f).shadow(if (pressed) 0.dp else 2.dp, RoundedCornerShape(6.dp)).clip(RoundedCornerShape(6.dp)).background(border)
+    val shape = RoundedCornerShape(10.dp)
+    Box(modifier.heightIn(min = 48.dp).border(if (focused) 2.dp else 0.dp, if (focused) Color(0xFF818CF8) else Color.Transparent, shape).offset(y = down.dp).alpha(if (enabled) 1f else .5f).shadow(if (pressed) 0.dp else 2.dp, shape).clip(shape).background(border)
         .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick).padding(bottom = (4 - 2 * down).dp)) {
         CompositionLocalProvider(LocalContentColor provides foreground, LocalTextStyle provides MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.SemiBold)) {
             Row(Modifier.fillMaxWidth().background(Brush.verticalGradient(colors)).padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, content = content)
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SunshineSheet(onDismissRequest: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismissRequest,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetMaxWidth = 600.dp, shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp,
+        dragHandle = {
+            Box(Modifier.padding(vertical = 10.dp).size(32.dp, 4.dp).clip(RoundedCornerShape(2.dp))
+                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .3f)))
+        }) {
+        Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()), content = content)
     }
 }
 
