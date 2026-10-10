@@ -12,6 +12,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
@@ -41,9 +43,10 @@ internal fun mapTiles(coordinates: Coordinates): List<MapTile> {
 @Composable
 fun StaticDestinationMap(coordinates: Coordinates, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    // Artwork and public CARTO tiles never use the Sunshine bearer transport.
+    // Artwork and public OSM tiles never use the Sunshine bearer transport.
     val loader = LocalArtworkLoader.current ?: remember(context) { ImageLoader.Builder(context).okHttpClient(OkHttpClient()).build() }
     val dark = MaterialTheme.colorScheme.background == Color(0xFF0F0E1F)
+    val tileFilter = remember(dark) { ColorFilter.colorMatrix(if (dark) darkTileMatrix() else lightTileMatrix()) }
     val base = MaterialTheme.colorScheme.surfaceVariant
     BoxWithConstraints(modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)).background(base)) {
         Canvas(Modifier.fillMaxSize()) {
@@ -53,13 +56,25 @@ fun StaticDestinationMap(coordinates: Coordinates, modifier: Modifier = Modifier
         }
         val width = maxWidth
         mapTiles(coordinates).forEach { tile ->
-            AsyncImage(model = ImageRequest.Builder(context).data("https://a.basemaps.cartocdn.com/${if (dark) "dark_all" else "light_all"}/16/${tile.x}/${tile.y}.png").crossfade(220).build(), imageLoader = loader, contentDescription = null,
+            // OSM tile policy requires an identifying User-Agent.
+            AsyncImage(model = ImageRequest.Builder(context).data("https://tile.openstreetmap.org/16/${tile.x}/${tile.y}.png")
+                .addHeader("User-Agent", "SunshineNavigator/${BuildConfig.VERSION_NAME} (+https://sunshine.rescoot.org)").crossfade(220).build(),
+                imageLoader = loader, contentDescription = null, colorFilter = tileFilter,
                 modifier = Modifier.offset(x = width / 2 + tile.offsetX.dp, y = 70.dp + tile.offsetY.dp).wrapContentSize(Alignment.TopStart, unbounded = true).requiredSize(256.dp))
         }
         Icon(Icons.Default.LocationOn, "Destination", tint = Color(0xFF4F46E5), modifier = Modifier.align(Alignment.Center).offset(y = (-16).dp).size(40.dp))
         Box(Modifier.align(Alignment.Center).offset(y = (-20).dp).size(8.dp).background(Color.White, androidx.compose.foundation.shape.CircleShape))
-        Text("© OpenStreetMap © CARTO", Modifier.align(Alignment.BottomEnd).padding(4.dp).background(Color.White.copy(alpha = .7f), RoundedCornerShape(3.dp)).padding(3.dp), color = Color(0xFF374151), fontSize = 8.sp)
+        Text("© OpenStreetMap contributors", Modifier.align(Alignment.BottomEnd).padding(4.dp).background(Color.White.copy(alpha = .7f), RoundedCornerShape(3.dp)).padding(3.dp), color = Color(0xFF374151), fontSize = 8.sp)
     }
+}
+
+// Muted, Positron-like rendering of the standard OSM style.
+private fun lightTileMatrix() = ColorMatrix().apply { setToSaturation(0.2f) }.also { m ->
+    m.timesAssign(ColorMatrix(floatArrayOf(0.85f, 0f, 0f, 0f, 38f, 0f, 0.85f, 0f, 0f, 38f, 0f, 0f, 0.85f, 0f, 40f, 0f, 0f, 0f, 1f, 0f)))
+}
+
+private fun darkTileMatrix() = ColorMatrix().apply { setToSaturation(0f) }.also { m ->
+    m.timesAssign(ColorMatrix(floatArrayOf(-0.75f, 0f, 0f, 0f, 205f, 0f, -0.75f, 0f, 0f, 205f, 0f, 0f, -0.7f, 0f, 215f, 0f, 0f, 0f, 1f, 0f)))
 }
 
 @Composable

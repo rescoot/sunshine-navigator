@@ -5,6 +5,11 @@ import java.util.Locale
 data class Coordinates(val latitude: Double, val longitude: Double) {
     fun isValid() = latitude.isFinite() && longitude.isFinite() && latitude in -90.0..90.0 && longitude in -180.0..180.0
     fun display() = String.format(Locale.ROOT, "%.5f, %.5f", latitude, longitude)
+    fun metersTo(other: Coordinates): Double {
+        val x = Math.toRadians(other.longitude - longitude) * kotlin.math.cos(Math.toRadians((latitude + other.latitude) / 2))
+        val y = Math.toRadians(other.latitude - latitude)
+        return kotlin.math.sqrt(x * x + y * y) * 6_371_000.0
+    }
 }
 
 data class PlaceResult(val coordinates: Coordinates, val label: String)
@@ -18,6 +23,9 @@ data class ScooterModelInfo(
     val fullName: String? = null
 ) {
     val displayName: String? get() = fullName?.takeIf(String::isNotBlank) ?: modelName?.takeIf(String::isNotBlank)
+    val summary: String? get() = modelName?.takeIf(String::isNotBlank)?.let { name ->
+        listOfNotNull(name, enginePowerRatingW?.let { if (it % 1000 == 0) "${it / 1000} kW" else String.format(Locale.ROOT, "%.1f kW", it / 1000.0) }).joinToString(" · ")
+    } ?: displayName
 }
 data class ScooterSummary(
     val id: Long,

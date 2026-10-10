@@ -90,7 +90,7 @@ fun ScooterTile(scooter: ScooterSummary, isDefault: Boolean, enabled: Boolean, o
             }
             ScooterArt(scooter, Modifier.fillMaxWidth().height(if (selectionMode) 100.dp else 112.dp))
             Text(scooter.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-            scooter.model?.displayName?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
+            scooter.model?.summary?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             scooter.state?.let { SunshineBadge(when { it.startsWith("hibernat") -> "Hibernating"; it == "ready-to-drive" -> "Ready"; it == "stand-by" -> "Stand-by"; else -> it.replace('-', ' ').replaceFirstChar(Char::uppercase) }, if (it == "parked" || it == "ready-to-drive") BadgeTone.Success else BadgeTone.Info) }
             if (scooter.online != true) {
@@ -98,7 +98,7 @@ fun ScooterTile(scooter: ScooterSummary, isDefault: Boolean, enabled: Boolean, o
             }
             }
             if (scooter.online != true && !selectionMode) Text("Can't send while offline", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            replaces?.let { Text("Replaces $it", fontSize = 12.sp, color = if (MaterialTheme.colorScheme.background == Color(0xFF0F0E1F)) Color(0xFFFDE047) else Color(0xFFA16207), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            replaces?.let { Text(it, fontSize = 12.sp, color = if (MaterialTheme.colorScheme.background == Color(0xFF0F0E1F)) Color(0xFFFDE047) else Color(0xFFA16207), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             if (sending) Text("Sending…", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
             if (accepted) Icon(Icons.Default.CheckCircle, "Sent", tint = Color(0xFF22C55E), modifier = Modifier.size(22.dp))
         }

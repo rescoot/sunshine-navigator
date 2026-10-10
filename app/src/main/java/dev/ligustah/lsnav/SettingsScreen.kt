@@ -15,7 +15,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.*
@@ -180,7 +179,7 @@ fun AccountScreen(state: SettingsState, onBack: () -> Unit = {}, onSelect: (Scoo
                     Icon(Icons.Default.ChevronRight, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            SunshineCard(Modifier.fillMaxWidth(), panel = true) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("About", fontWeight = FontWeight.Bold, fontSize = 18.sp); Text("Sunshine Navigator · ${BuildConfig.VERSION_NAME}"); Text("Uses Sunshine by rescoot", color = MaterialTheme.colorScheme.onSurfaceVariant); Text("Maps © OpenStreetMap © CARTO", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+            SunshineCard(Modifier.fillMaxWidth(), panel = true) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("About", fontWeight = FontWeight.Bold, fontSize = 18.sp); Text("Sunshine Navigator · ${BuildConfig.VERSION_NAME}"); Text("Uses Sunshine by rescoot", color = MaterialTheme.colorScheme.onSurfaceVariant); Text("Maps © OpenStreetMap contributors", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
             SunshineButton(onSignOut, enabled = !state.busy, tone = ButtonTone.Danger) { Text("Sign out") }
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
@@ -202,8 +201,12 @@ private fun ConnectionFields(state: SettingsState, model: SettingsViewModel, rec
 @Composable
 private fun DefaultScooterOptions(scooters: List<ScooterSummary>, selected: Long?, enabled: Boolean, onSelect: (ScooterSummary) -> Unit, onAsk: () -> Unit) {
     val options = scooters + listOf<ScooterSummary?>(null)
-    if (scooters.size <= 3) {
-        val columns = if (LocalDensity.current.fontScale >= 1.3f) 1 else 2
+    run {
+        val columns = when {
+            LocalDensity.current.fontScale >= 1.3f -> 1
+            options.size > 4 -> 3
+            else -> 2
+        }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             options.chunked(columns).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -212,8 +215,6 @@ private fun DefaultScooterOptions(scooters: List<ScooterSummary>, selected: Long
                 }
             }
         }
-    } else LazyRow(contentPadding = PaddingValues(4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(options) { scooter -> PreferenceChip(scooter, scooter?.id == selected, enabled, { if (scooter == null) onAsk() else onSelect(scooter) }, Modifier.width(140.dp)) }
     }
 }
 
