@@ -9,3 +9,15 @@ app/build
 .externalNativeBuild
 .cxx
 /scratch/
+/dist/
+.env
+.env.*
+*.jks
+*.keystore
+*.p12
+*.p8
+*.mobileprovision
+AGENTS.md
+CLAUDE.md
+.beans/
+.pi/

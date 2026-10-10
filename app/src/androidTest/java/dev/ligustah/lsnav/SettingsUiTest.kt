@@ -15,6 +15,9 @@ class SettingsUiTest {
     @get:Rule val compose = createAndroidComposeRule<SettingsActivity>()
 
     @Test fun connectionDraftSurvivesActivityRecreation() {
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasText("Other server or API token") and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithText("Other server or API token").performClick()
         compose.waitUntil(10_000) {
             compose.onAllNodes(hasText("Sunshine server (HTTPS)") and isEnabled()).fetchSemanticsNodes().isNotEmpty()
