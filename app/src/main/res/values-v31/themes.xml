@@ -1,6 +1,1 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <style name="Theme.LibrescootNavigation" parent="Theme.LibrescootNavigation.Base">
-        <item name="android:windowSplashScreenBackground">@color/nav_window_background</item>
-    </style>
-</resources>
+<resources><style name="Theme.SunshineNavigator" parent="Theme.SunshineNavigator.Base"><item name="android:windowSplashScreenBackground">@color/nav_primary</item><item name="android:windowSplashScreenAnimatedIcon">@drawable/sun_mark</item></style></resources>

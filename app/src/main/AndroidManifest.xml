@@ -9,17 +9,19 @@
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
-        android:icon="@drawable/ic_launcher"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.LibrescootNavigation"
+        android:theme="@style/Theme.SunshineNavigator"
         tools:targetApi="31">
 
         <activity
             android:name=".SettingsActivity"
+            android:label="@string/launcher_name"
+            android:windowSoftInputMode="adjustResize"
             android:exported="true"
             android:launchMode="singleTop"
-            android:theme="@style/Theme.LibrescootNavigation">
+            android:theme="@style/Theme.SunshineNavigator">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -28,8 +30,9 @@
 
         <activity
             android:name=".ShareReceiverActivity"
+            android:label="@string/share_target"
             android:exported="true"
-            android:theme="@style/Theme.LibrescootNavigation">
+            android:theme="@style/Theme.SunshineNavigator">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

@@ -22,5 +22,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "LibrescootNavigation"
+rootProject.name = "sunshine-navigator"
 include(":app")

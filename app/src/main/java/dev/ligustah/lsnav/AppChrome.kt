@@ -24,17 +24,7 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun BrandHeader(modifier: Modifier = Modifier) {
-    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Surface(Modifier.size(44.dp), shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primary) {
-            Box(contentAlignment = Alignment.Center) {
-                Text("LS", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
-            }
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text("LSNav", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text("SUNSHINE NAVIGATION", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
+    NavigatorBar()
 }
 
 @Composable

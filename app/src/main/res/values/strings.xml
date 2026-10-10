@@ -1,3 +1,1 @@
-<resources>
-    <string name="app_name">LSNav</string>
-</resources>
+<resources><string name="app_name">Sunshine Navigator</string><string name="launcher_name">Navigator</string><string name="share_target">Send to scooter</string></resources>
