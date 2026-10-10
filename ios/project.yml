@@ -31,6 +31,8 @@ targets:
       path: Generated/App-Info.plist
       properties:
         CFBundleDisplayName: Navigator
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSRequiresIPhoneOS: true
         CFBundleURLTypes:
           - CFBundleURLName: Sunshine OAuth
@@ -68,6 +70,8 @@ targets:
       path: Generated/Share-Info.plist
       properties:
         CFBundleDisplayName: Send to scooter
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NavigatorKeychainGroup: $(AppIdentifierPrefix)org.rescoot.sunshine-navigator
         UIAppFonts: [plate.ttf]
         NSExtension:
