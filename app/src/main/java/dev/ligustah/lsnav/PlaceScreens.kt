@@ -36,7 +36,7 @@ internal val NavigationState.networkLoading: Boolean get() = searching || sendin
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun HomeScreen(state: NavigationState, query: String = state.query, results: List<PlaceResult> = state.results, onQuery: (String) -> Unit = {}, onOpen: (PlaceResult, Long?) -> Unit = { _, _ -> }, onEdit: (SavedPlace) -> Unit = {}, onStar: (SavedPlace) -> Unit = {}, onAdd: () -> Unit = {}, onSettings: () -> Unit = {}, onRefresh: () -> Unit = {}, onClear: () -> Unit = {}, onChange: () -> Unit = {}, recovery: @Composable () -> Unit = {}) {
+fun HomeScreen(state: NavigationState, query: String = state.query, results: List<PlaceResult> = state.results, onQuery: (String) -> Unit = {}, onOpen: (PlaceResult, Long?) -> Unit = { _, _ -> }, onEdit: (SavedPlace) -> Unit = {}, onStar: (SavedPlace) -> Unit = {}, onAdd: () -> Unit = {}, onSettings: () -> Unit = {}, onRefresh: () -> Unit = {}, onClear: () -> Unit = {}, onSelectScooter: (ScooterSummary) -> Unit = {}, recovery: @Composable () -> Unit = {}) {
     val searchInteraction = remember { MutableInteractionSource() }
     val searchFocused by searchInteraction.collectIsFocusedAsState()
     val scroll = rememberScrollState()
@@ -48,28 +48,20 @@ fun HomeScreen(state: NavigationState, query: String = state.query, results: Lis
             AnimatedVisibility(results.isNotEmpty(), enter = fadeIn() + expandVertically()) { GroupedPlaces(results, onOpen = { onOpen(it, null) }, leading = Icons.Default.Place) }
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (state.configuration.isReady) {
-                val scooter = state.scooters.value.orEmpty().firstOrNull { it.id == state.configuration.scooterId }
                 SunshineCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            if (scooter != null) ScooterArt(scooter, Modifier.size(64.dp, 56.dp))
+                        ScooterDropdown(state.scooters.value.orEmpty(), state.configuration.scooterId, !state.sending, onSelectScooter)
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (scooter != null) StatusDot(scooter)
-                                    Text("${scooter?.name ?: state.configuration.scooterName} · Navigating to", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
+                                Text("Destination", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(when { state.destination.error != null -> "Couldn't check destination"; state.destination.value == null -> "Checking destination…"; state.destination.value.place == null -> "No destination set"; else -> state.destination.value.place.displayTitle() }, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                             }
-                        }
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onChange, enabled = !state.sending, contentPadding = PaddingValues(horizontal = 0.dp)) { Text("Change scooter") }
-                            Spacer(Modifier.weight(1f))
                             if (state.destination.error != null) TextButton(onRefresh) { Icon(Icons.Default.Refresh, null, Modifier.size(20.dp)); Spacer(Modifier.width(4.dp)); Text("Retry") }
                             else if (state.destination.value?.place != null) SunshineButton(onClear, enabled = !state.sending && state.uncertainTarget == null && !state.pendingCommandForOtherAccount && !state.pendingCommandLoading, tone = ButtonTone.Secondary, modifier = Modifier.width(80.dp)) { Text("Clear") }
                         }
                     }
                 }
-            } else if (state.scooters.value.orEmpty().isNotEmpty()) TextButton(onChange) { Text("Choose a scooter to browse") }
+            } else if (state.scooters.value.orEmpty().isNotEmpty()) ScooterDropdown(state.scooters.value.orEmpty(), null, !state.sending, onSelectScooter)
             if (!state.configuration.isAuthenticated) ProblemPanel("Connect Sunshine", "Sign in to find your scooters and places.", "Get started", onSettings, BadgeTone.Indigo)
             val personal = state.personalPlaces.value
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
@@ -83,14 +75,14 @@ fun HomeScreen(state: NavigationState, query: String = state.query, results: Lis
             state.personalPlaces.error?.let { ProblemPanel("Couldn't load places", it, "Retry", onRefresh) }
             if (!personal?.favorites.isNullOrEmpty()) LazyRow(contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(personal!!.favorites, key = { it.id }) { saved ->
-                    SunshineCard(Modifier.width(148.dp).heightIn(min = 132.dp).combinedClickable(onClick = { onOpen(saved.place, saved.id) }, onLongClick = { onEdit(saved) })) {
+                    SunshineCard(Modifier.testTag("favourite-${saved.id}").width(148.dp).height(with(LocalDensity.current) { 92.sp.toDp() } + 40.dp).combinedClickable(onClick = { onOpen(saved.place, saved.id) }, onLongClick = { onEdit(saved) })) {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Star, null, Modifier.size(22.dp), tint = Color(0xFFFBBF24))
                                 IconButton({ onEdit(saved) }, Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, "Edit ${saved.place.label}", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                             }
-                            Text(saved.place.displayTitle(), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Text(saved.place.displayDetail(), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(saved.place.displayTitle(), fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold, minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(saved.place.displayDetail(), fontSize = 12.sp, lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
@@ -104,7 +96,7 @@ fun HomeScreen(state: NavigationState, query: String = state.query, results: Lis
                 state.savedLocations.error?.let { ProblemPanel("Couldn't load scooter places", it, "Retry", onRefresh) }
                 if (state.savedLocations.loading && state.savedLocations.value == null) Text("Loading scooter places…", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (state.savedLocations.value?.isEmpty() == true && !state.savedLocations.loading && state.savedLocations.error == null) Text("No saved places on this scooter.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (state.savedLocations.value.orEmpty().isNotEmpty()) GroupedPlaces(state.savedLocations.value.orEmpty(), { onOpen(it, null) }, Icons.Default.ElectricScooter)
+                if (state.savedLocations.value.orEmpty().isNotEmpty()) GroupedPlaces(state.savedLocations.value.orEmpty(), { onOpen(it, null) }, Icons.Default.Place)
             }
             if (personal != null && personal.favorites.isEmpty() && personal.recent.isEmpty()) EmptyPlaces()
         }

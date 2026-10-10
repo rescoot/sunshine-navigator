@@ -53,7 +53,6 @@ fun NavigationScreen(
     var favoriteLabel by rememberSaveable { mutableStateOf("") }
     var favoriteSaveStartSequence by rememberSaveable { mutableStateOf(state.favoriteMutationSequence) }
     var deleteFavoritePending by remember { mutableStateOf<SavedPlace?>(null) }
-    var showBrowseVehicles by rememberSaveable { mutableStateOf(false) }
     var addingFavorite by rememberSaveable { mutableStateOf(false) }
     var clearWarning by remember { mutableStateOf(false) }
     var sendingTarget by remember { mutableStateOf<CommandTarget?>(null) }
@@ -189,16 +188,7 @@ fun NavigationScreen(
             onEdit = { saved -> openFavoriteEditor(saved.id, saved.place, saved.place.label) },
             onStar = { saved -> model.setFavorite(saved, !saved.isFavorite) },
             onAdd = { addingFavorite = true },
-            onSettings = onSettings, onRefresh = model::refresh, onClear = { clearWarning = true }, onChange = { showBrowseVehicles = true }, recovery = { recovery(false) })
-    }
-    if (showBrowseVehicles) SunshineSheet(onDismissRequest = { showBrowseVehicles = false }) {
-        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Browse scooter places", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text("Read-only. Your default stays the same.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            state.scooters.value.orEmpty().forEach { scooter ->
-                TextButton(onClick = { model.selectScooter(scooter); showBrowseVehicles = false }, enabled = !state.sending) { Text(scooter.name) }
-            }
-        }
+            onSettings = onSettings, onRefresh = model::refresh, onClear = { clearWarning = true }, onSelectScooter = model::selectScooter, recovery = { recovery(false) })
     }
     if (addingFavorite) SunshineSheet(onDismissRequest = { addingFavorite = false }) {
         Column(Modifier.fillMaxWidth().imePadding().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

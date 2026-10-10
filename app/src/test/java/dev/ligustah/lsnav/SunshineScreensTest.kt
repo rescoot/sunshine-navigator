@@ -11,6 +11,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.test.core.app.ApplicationProvider
@@ -72,7 +74,7 @@ class SunshineScreensTest(private val scene: String, private val dark: Boolean) 
                             "scooters_error" -> SetupScootersScreen(setup.copy(scooters = RemoteData(error = "Couldn't reach Sunshine. Check your connection and retry.")))
                             "scooters_empty" -> SetupScootersScreen(setup.copy(scooters = RemoteData.loaded(emptyList())))
                             "ready" -> ReadyScreen()
-                            "home" -> HomeScreen(state)
+                            "home", "home_picker" -> HomeScreen(state)
                             "home_scrolled" -> HomeScreen(state.copy(personalPlaces = RemoteData.loaded(PersonalPlaces(state.personalPlaces.value!!.favorites, (1L..8L).map { SavedPlace(it + 10, place.copy(label = "Recent place $it"), false) }))))
                             "home_empty" -> HomeScreen(state.copy(destination = RemoteData.loaded(NavigationTarget()), savedLocations = RemoteData.loaded(emptyList()), personalPlaces = RemoteData.loaded(PersonalPlaces())))
                             "search" -> HomeScreen(state, query = "Tiergarten", results = listOf(place, park))
@@ -107,13 +109,17 @@ class SunshineScreensTest(private val scene: String, private val dark: Boolean) 
             compose.onNodeWithTag("home-scroll").performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, 180f) }
             compose.waitForIdle()
         }
+        if (scene == "home_picker") {
+            compose.onNodeWithContentDescription("Browse scooter places: Bluebird").performClick()
+            compose.waitForIdle()
+        }
         val directory = File("build/outputs/roborazzi").apply { mkdirs() }
         val path = File(directory, "${scene}_${if (dark) "dark" else "light"}.png").path
-        if (scene.startsWith("editor")) captureScreenRoboImage(path) else compose.onRoot().captureRoboImage(path)
+        if (scene.startsWith("editor") || scene == "home_picker") captureScreenRoboImage(path) else compose.onRoot().captureRoboImage(path)
         loader.shutdown()
     }
 
     companion object {
-        @JvmStatic @ParameterizedRobolectricTestRunner.Parameters(name = "{0}-{1}") fun scenes(): List<Array<Any>> = listOf("welcome", "welcome_share", "scooters", "scooters_error", "scooters_empty", "ready", "home", "home_scrolled", "home_empty", "search", "send_idle", "send_sending", "send_accepted", "send_uncertain", "send_failed", "settings", "editor", "editor_existing").flatMap { scene -> listOf(arrayOf(scene, false), arrayOf(scene, true)) }
+        @JvmStatic @ParameterizedRobolectricTestRunner.Parameters(name = "{0}-{1}") fun scenes(): List<Array<Any>> = listOf("welcome", "welcome_share", "scooters", "scooters_error", "scooters_empty", "ready", "home", "home_picker", "home_scrolled", "home_empty", "search", "send_idle", "send_sending", "send_accepted", "send_uncertain", "send_failed", "settings", "editor", "editor_existing").flatMap { scene -> listOf(arrayOf(scene, false), arrayOf(scene, true)) }
     }
 }

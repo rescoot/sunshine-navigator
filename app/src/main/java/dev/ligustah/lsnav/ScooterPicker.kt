@@ -10,12 +10,15 @@ import androidx.compose.material3.*
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.*
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -48,13 +51,13 @@ fun ScooterPicker(scooters: List<ScooterSummary>, enabled: Boolean, defaultScoot
 
 @Composable
 fun StatusDot(scooter: ScooterSummary, modifier: Modifier = Modifier) {
-    val color = if (scooter.online == true) Color(0xFF22C55E) else if (scooter.lastSeenAt != null) Color(0xFFEF4444) else Color(0xFFEAB308)
+    val color = when (scooter.online) { true -> Color(0xFF22C55E); false -> Color(0xFFEF4444); null -> Color(0xFFEAB308) }
     var pulse = 0f
     if (scooter.online == true && motionEnabled()) {
         val transition = rememberInfiniteTransition(label = "online")
         pulse = transition.animateFloat(0f, 1f, infiniteRepeatable(tween(4000, easing = LinearEasing)), label = "ring").value
     }
-    Box(modifier.size(18.dp), contentAlignment = Alignment.Center) {
+    Box(modifier.size(18.dp).semantics { contentDescription = when (scooter.online) { true -> "Online"; false -> "Offline"; null -> "Connection unknown" } }, contentAlignment = Alignment.Center) {
         Box(Modifier.size((8 + pulse * 10).dp).border(2.dp, color.copy(alpha = .4f * (1 - pulse)), CircleShape))
         Box(Modifier.size(8.dp).background(color, CircleShape))
     }
@@ -64,10 +67,57 @@ fun StatusDot(scooter: ScooterSummary, modifier: Modifier = Modifier) {
 fun ScooterArt(scooter: ScooterSummary, modifier: Modifier = Modifier) {
     val offline = scooter.online != true
     Box(modifier, contentAlignment = Alignment.Center) {
-        val image = listOf(scooter.images.right, scooter.images.front, scooter.images.left).firstOrNull { it?.startsWith("https://") == true }
+        val image = scooter.artworkUrl()
         AsyncImage(imageLoader = LocalArtworkLoader.current ?: coil.Coil.imageLoader(androidx.compose.ui.platform.LocalContext.current), model = image, contentDescription = null, fallback = painterResource(R.drawable.scooter_placeholder), error = painterResource(R.drawable.scooter_placeholder), placeholder = painterResource(R.drawable.scooter_placeholder),
             colorFilter = if (offline) ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(.5f) }) else null,
             modifier = Modifier.fillMaxSize().alpha(if (offline) .75f else 1f))
+    }
+}
+
+internal fun ScooterSummary.artworkUrl() = listOf(images.right, images.left, images.front).firstOrNull { it?.startsWith("https://") == true }
+
+internal fun ScooterSummary.vehicleStateLabel(): String = when {
+    state.isNullOrBlank() || state == "unknown" -> "State unknown"
+    state == "ready-to-drive" -> "Ready to drive"
+    state == "stand-by" -> "Stand-by"
+    else -> state.replace('-', ' ').replaceFirstChar(Char::uppercase)
+}
+
+@Composable
+fun ScooterRow(scooter: ScooterSummary, selected: Boolean = false, enabled: Boolean = true, onClick: () -> Unit = {}, modifier: Modifier = Modifier, dropdown: Boolean = false, description: String? = null) {
+    val primary = MaterialTheme.colorScheme.primary
+    Row(modifier.fillMaxWidth().heightIn(min = 84.dp).clip(RoundedCornerShape(10.dp))
+        .background(if (selected) primary.copy(alpha = .07f) else Color.Transparent)
+        .border(if (selected) 2.dp else 1.dp, if (selected) primary.copy(alpha = .65f) else if (dropdown) MaterialTheme.colorScheme.outlineVariant else Color.Transparent, RoundedCornerShape(10.dp))
+        .semantics(mergeDescendants = true) { this.selected = selected; if (description != null) contentDescription = description }
+        .clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ScooterArt(scooter, Modifier.size(96.dp, 76.dp).testTag("scooter-art-${scooter.id}"))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(scooter.name, Modifier.weight(1f), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                StatusDot(scooter)
+            }
+            Text(scooter.vehicleStateLabel(), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (dropdown) Icon(Icons.Default.ArrowDropDown, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+fun ScooterDropdown(scooters: List<ScooterSummary>, selectedId: Long?, enabled: Boolean = true, onSelect: (ScooterSummary) -> Unit = {}) {
+    var expanded by remember { mutableStateOf(false) }
+    var width by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    val scooter = scooters.firstOrNull { it.id == selectedId }
+    Box(Modifier.fillMaxWidth().onSizeChanged { width = it.width }) {
+        if (scooter != null) ScooterRow(scooter, enabled = enabled, dropdown = true, onClick = { expanded = true }, description = "Browse scooter places: ${scooter.name}")
+        else SunshineButton({ expanded = true }, enabled = enabled && scooters.isNotEmpty(), tone = ButtonTone.Secondary) { Text("Choose a scooter"); Icon(Icons.Default.ArrowDropDown, null) }
+        DropdownMenu(expanded && enabled, onDismissRequest = { expanded = false }, modifier = Modifier.width(with(density) { width.toDp() }).heightIn(max = 360.dp).background(MaterialTheme.colorScheme.surface)) {
+            scooters.forEach { item ->
+                ScooterRow(item, selected = item.id == selectedId, onClick = { expanded = false; onSelect(item) })
+            }
+        }
     }
 }
 
@@ -97,16 +147,11 @@ fun ScooterTile(scooter: ScooterSummary, isDefault: Boolean, enabled: Boolean, o
             val status = when {
                 sending -> "Sending…"
                 accepted -> "Sent"
-                scooter.online == null -> "Status unknown"
-                scooter.online == false -> "Offline"
-                scooter.state?.startsWith("hibernat") == true -> "Hibernating"
-                scooter.state == "ready-to-drive" -> "Ready"
-                scooter.state == "stand-by" -> "Stand-by"
-                else -> scooter.state?.replace('-', ' ')?.replaceFirstChar(Char::uppercase) ?: "Online"
+                else -> scooter.vehicleStateLabel()
             }
             Row(Modifier.heightIn(min = 24.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (accepted) Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF22C55E), modifier = Modifier.size(18.dp))
-                Text(status, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = if (scooter.online == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(if (sending || accepted) "${scooter.vehicleStateLabel()} · $status" else status, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = if (scooter.online == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
         if (sending) TurboBar()

@@ -17,6 +17,40 @@ class ScooterPickerTest {
     private val online = ScooterSummary(1, "Bluebird", true)
     private val offline = ScooterSummary(2, "Clementine", false)
 
+    @Test fun rowsKeepArtworkSizesAndShowVehicleStateEvenWhenOffline() {
+        val a = online.copy(state = "parked")
+        val b = offline.copy(state = "stand-by")
+        compose.setContent { NavigationTheme { androidx.compose.foundation.layout.Column {
+            ScooterRow(a)
+            ScooterRow(b)
+        } } }
+        val first = compose.onNodeWithTag("scooter-art-1", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val second = compose.onNodeWithTag("scooter-art-2", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertEquals(first.width, second.width, 0f)
+        assertEquals(first.height, second.height, 0f)
+        compose.onNodeWithText("Parked").assertExists()
+        compose.onNodeWithText("Stand-by").assertExists()
+        compose.onNodeWithContentDescription("Online").assertExists()
+        compose.onNodeWithContentDescription("Offline").assertExists()
+        compose.onAllNodes(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.Role, androidx.compose.ui.semantics.Role.RadioButton)).assertCountEquals(0)
+    }
+
+    @Test fun dropdownOnlySelectsAfterAnExplicitMenuChoice() {
+        var selections = 0
+        compose.setContent { NavigationTheme { ScooterDropdown(listOf(online, offline.copy(state = "hibernating")), 1, onSelect = { selections++ }) } }
+        compose.onNodeWithText("Clementine").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Browse scooter places: Bluebird").performClick()
+        assertEquals(0, selections)
+        compose.onNodeWithText("Hibernating").assertIsDisplayed()
+        compose.onNodeWithText("Clementine").performClick()
+        assertEquals(1, selections)
+        compose.onNodeWithText("Clementine").assertDoesNotExist()
+    }
+
+    @Test fun artworkPrefersEitherSideBeforeFrontView() {
+        assertEquals("https://art/left.png", online.copy(images = ScooterImages(front = "https://art/front.png", left = "https://art/left.png")).artworkUrl())
+    }
+
     @Test fun gridAlignsCardsWithDifferentNamesAndConnectivityWithoutModelNoise() {
         val first = online.copy(state = "stand-by", model = ScooterModelInfo(modelName = "Unneeded model", enginePowerRatingW = 4000), licensePlate = "176 JLG")
         val second = online.copy(id = 2, name = "A scooter with a longer name", state = "hibernating")

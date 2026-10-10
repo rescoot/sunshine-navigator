@@ -40,6 +40,16 @@ class PlaceSurfacesTest {
         assertEquals(0, saved)
     }
 
+    @Test fun favouriteCardsHaveEqualFixedHeightForShortAndLongNames() {
+        val places = listOf(SavedPlace(1, place), SavedPlace(2, place.copy(label = "A favourite with a much longer name and address")))
+        compose.setContent { NavigationTheme { HomeScreen(NavigationState(personalPlaces = RemoteData.loaded(PersonalPlaces(places, emptyList())), pendingCommandLoading = false)) } }
+        val first = compose.onNodeWithTag("favourite-1").fetchSemanticsNode().boundsInRoot
+        val second = compose.onNodeWithTag("favourite-2").fetchSemanticsNode().boundsInRoot
+        assertEquals(first.height, second.height, 0f)
+        assertEquals(first.top, second.top, 0f)
+        assertEquals(first.bottom, second.bottom, 0f)
+    }
+
     @Test fun savingDisablesBothGroupedActions() {
         compose.setContent { NavigationTheme { PlaceEditorActions(true, enabled = false) } }
         compose.onNodeWithText("Remove from favourites").assertIsNotEnabled()

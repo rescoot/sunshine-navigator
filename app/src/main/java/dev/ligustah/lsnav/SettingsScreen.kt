@@ -11,6 +11,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
@@ -110,10 +112,7 @@ fun SetupScootersScreen(state: SettingsState, onSelect: (ScooterSummary) -> Unit
                     SunshineButton({ context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(state.profile.configuration.baseUrl.removeSuffix("/api/v1").trimEnd('/') + "/scooters"))) }, tone = ButtonTone.Secondary) { Text("Open Sunshine") }
                     TextButton(onRefresh) { Text("Refresh") }
                 }
-                else -> ScooterPicker(state.scooters.value.orEmpty(), !state.busy, state.draft.scooterId, onSelect, selectionMode = true)
-            }
-            SunshineCard(Modifier.fillMaxWidth().clickable(enabled = !state.busy, onClick = onAsk), panel = true, accent = if (state.draft.scooterId == null) Color(0xFF4F46E5) else null) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { Icon(Icons.Default.GridView, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.primary); Text("Ask every time", fontWeight = FontWeight.SemiBold) }; Text("Choose a scooter each time you send.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                else -> DefaultScooterOptions(state.scooters.value.orEmpty(), state.draft.scooterId, !state.busy, onSelect, onAsk)
             }
         }
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Brush.verticalGradient(listOf(MaterialTheme.colorScheme.background.copy(alpha = 0f), MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.background))).navigationBarsPadding().padding(start = 20.dp, end = 20.dp, top = 28.dp, bottom = 12.dp)) {
@@ -198,30 +197,20 @@ private fun ConnectionFields(state: SettingsState, model: SettingsViewModel, rec
 private fun DefaultScooterOptions(scooters: List<ScooterSummary>, selected: Long?, enabled: Boolean, onSelect: (ScooterSummary) -> Unit, onAsk: () -> Unit) {
     var showUnavailable by remember { mutableStateOf(false) }
     val available = scooters.filter { it.availableForNavigation || it.id == selected || showUnavailable }
-    Column {
-        PreferenceChip(null, selected == null, enabled, onAsk)
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), color = if (selected == null) MaterialTheme.colorScheme.primary.copy(alpha = .07f) else Color.Transparent,
+            border = if (selected == null) BorderStroke(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = .65f)) else null) {
+            Column(Modifier.clickable(enabled = enabled, onClick = onAsk).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Ask every time", fontWeight = FontWeight.SemiBold)
+                Text("Choose a scooter each time you send.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
         available.forEach { scooter ->
-            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
-            PreferenceChip(scooter, scooter.id == selected, enabled, { onSelect(scooter) })
+            ScooterRow(scooter, scooter.id == selected, enabled, { onSelect(scooter) }, description = "Choose ${scooter.name} as default")
         }
         val hidden = scooters.count { !it.availableForNavigation && it.id != selected }
         if (hidden > 0) TextButton({ showUnavailable = !showUnavailable }) {
             Text(if (showUnavailable) "Hide unavailable scooters" else "Show unavailable scooters ($hidden)")
         }
-    }
-}
-
-@Composable
-private fun PreferenceChip(scooter: ScooterSummary?, selected: Boolean, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier.fillMaxWidth().heightIn(min = if (scooter == null) 56.dp else 80.dp)
-        .clickable(enabled = enabled, role = androidx.compose.ui.semantics.Role.RadioButton, onClick = onClick)
-        .padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (scooter != null) ScooterArt(scooter, Modifier.width(96.dp).height(76.dp))
-        else Icon(Icons.Default.GridView, null, Modifier.padding(horizontal = 12.dp).size(24.dp), tint = MaterialTheme.colorScheme.primary)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(scooter?.name ?: "Ask every time", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-            if (scooter != null && !scooter.availableForNavigation) Text(if (scooter.online != true) "Offline" else "Navigation not permitted", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        RadioButton(selected, onClick = null, enabled = enabled)
     }
 }
