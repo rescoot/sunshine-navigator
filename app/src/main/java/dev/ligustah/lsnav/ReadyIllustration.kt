@@ -27,7 +27,7 @@ fun ReadyIllustration(modifier: Modifier = Modifier) {
         Canvas(Modifier.fillMaxSize()) {
             val path = Path().apply {
                 moveTo(size.width * .34f, size.height * .52f)
-                cubicTo(size.width * .44f, size.height * .98f, size.width * .53f, size.height * .98f, size.width * .65f, size.height * .64f)
+                cubicTo(size.width * .44f, size.height * .98f, size.width * .53f, size.height * .98f, size.width * .57f, size.height * .55f)
             }
             drawPath(path, indigo, style = Stroke(2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx()))))
         }
@@ -48,6 +48,6 @@ fun ReadyIllustration(modifier: Modifier = Modifier) {
             Text("Potsdamer Straße", color = Color(0xFFD1D5DB), fontSize = 11.sp)
             Box(Modifier.fillMaxWidth(.6f).height(3.dp).background(Color(0xFF6366F1), RoundedCornerShape(2.dp)))
         }
-        Icon(Icons.Default.Navigation, null, Modifier.offset(x = maxWidth * .65f - 12.dp, y = maxHeight * .64f - 12.dp).size(24.dp).rotate(38f), tint = indigo)
+        Icon(Icons.Default.Navigation, null, Modifier.offset(x = maxWidth * .57f - 12.dp, y = maxHeight * .55f - 12.dp).size(24.dp).rotate(38f), tint = indigo)
     }
 }

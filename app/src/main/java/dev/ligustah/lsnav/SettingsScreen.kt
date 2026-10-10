@@ -130,7 +130,7 @@ fun ReadyScreen(busy: Boolean = false, error: String? = null, onBack: (() -> Uni
         NavigatorBar(loading = busy, onBack = onBack)
         Column(Modifier.fillMaxSize().navigationBarsPadding().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             StepDots(2, Modifier.padding(top = 12.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(Modifier.weight(1f).padding(top = 72.dp), verticalArrangement = Arrangement.Top, horizontalAlignment = Alignment.CenterHorizontally) {
                 ReadyIllustration(Modifier.fillMaxWidth().height(216.dp))
                 Spacer(Modifier.height(24.dp))
                 Text("You're set", fontSize = 28.sp, fontWeight = FontWeight.Bold)
@@ -201,7 +201,7 @@ private fun ConnectionFields(state: SettingsState, model: SettingsViewModel, rec
 
 @Composable
 private fun DefaultScooterOptions(scooters: List<ScooterSummary>, selected: Long?, enabled: Boolean, onSelect: (ScooterSummary) -> Unit, onAsk: () -> Unit) {
-    val options = scooters.map { it as ScooterSummary? } + null
+    val options = scooters + listOf<ScooterSummary?>(null)
     if (scooters.size <= 3) {
         val columns = if (LocalDensity.current.fontScale >= 1.3f) 1 else 2
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

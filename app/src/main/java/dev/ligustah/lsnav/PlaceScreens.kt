@@ -2,6 +2,7 @@ package dev.ligustah.lsnav
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -23,6 +24,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.animation.core.tween
 
 internal val NavigationState.networkLoading: Boolean get() = searching || sending || favoriteEditor.saving || scooters.loading || destination.loading || personalPlaces.loading || savedLocations.loading || checkingUncertain || pendingCommandLoading
 
@@ -124,18 +131,31 @@ fun GroupedPlaces(places: List<PlaceResult>, onOpen: (PlaceResult) -> Unit, lead
 @Composable
 fun SendScreen(state: NavigationState, place: PlaceResult?, shared: Boolean = false, acceptedTarget: CommandTarget? = null, sendingTarget: CommandTarget? = null, enabled: Boolean = false, results: List<PlaceResult> = emptyList(), onCandidate: (PlaceResult) -> Unit = {}, onSend: (ScooterSummary) -> Unit = {}, onBack: () -> Unit = {}, onSettings: () -> Unit = {}, onRefresh: () -> Unit = {}, onSave: () -> Unit = {}, onEdit: () -> Unit = {}, onDone: () -> Unit = {}, onAnother: () -> Unit = {}, recovery: @Composable () -> Unit = {}) {
     var showFailure by remember(state.error) { mutableStateOf(true) }
+    val hasRecovery = state.uncertainTarget != null || state.pendingCommandForOtherAccount
+    val hasFailure = showFailure && state.error != null && !hasRecovery
+    val hasResult = hasRecovery || acceptedTarget != null || hasFailure
+    val focusedId = acceptedTarget?.configuration?.scooterId ?: state.uncertainTarget?.configuration?.scooterId ?: sendingTarget?.configuration?.scooterId
+    val scroll = rememberScrollState()
+    val density = LocalDensity.current
+    var sheetHeight by remember { mutableStateOf(0) }
+    var viewportHeight by remember { mutableStateOf(0) }
+    var viewportTop by remember { mutableStateOf(0f) }
+    var focusedBounds by remember { mutableStateOf<Rect?>(null) }
+    LaunchedEffect(hasResult, sheetHeight, focusedId) {
+        if (hasResult && sheetHeight > 0 && focusedId != null) {
+            val bottom = focusedBounds?.bottom ?: return@LaunchedEffect
+            val availableBottom = viewportTop + viewportHeight - sheetHeight - with(density) { 8.dp.toPx() }
+            if (bottom > availableBottom) scroll.animateScrollBy(bottom - availableBottom, tween(220, easing = SunshineEase))
+        }
+    }
     Column(Modifier.fillMaxSize()) {
         NavigatorBar("Send to scooter", state.networkLoading, onBack, onAccount = onSettings)
-        Column(Modifier.weight(1f).widthIn(max = 600.dp).fillMaxWidth().align(Alignment.CenterHorizontally).navigationBarsPadding().imePadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Box(Modifier.weight(1f).fillMaxWidth().onSizeChanged { viewportHeight = it.height }.onGloballyPositioned { viewportTop = it.positionInRoot().y }) {
+        Column(Modifier.widthIn(max = 600.dp).fillMaxSize().align(Alignment.TopCenter).navigationBarsPadding().imePadding().verticalScroll(scroll).padding(20.dp).padding(bottom = if (hasResult) with(density) { sheetHeight.toDp() } else 0.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             DestinationTicket(place, shared, state.incomingResolutionRequired && place == null, state.sending, onSave, onEdit)
             if (place == null && results.isNotEmpty()) GroupedPlaces(results, onCandidate, Icons.Default.Place)
             if (place == null) TextButton(onEdit) { Text("Edit place") }
-            recovery()
-            if (showFailure && state.uncertainTarget == null && !state.pendingCommandForOtherAccount) state.error?.let {
-                val resolving = place == null
-                val reconnect = state.configuration.needsPermissionUpgrade || it.contains("login", true) || it.contains("token", true) || it.contains("Settings", true)
-                ProblemPanel(if (resolving) "Couldn't find this place" else "Couldn't send this place", it, if (resolving) "Edit place" else if (reconnect) "Reconnect" else "Choose another scooter", if (resolving) onEdit else if (reconnect) onSettings else { { showFailure = false } })
-            }
+            if (!hasRecovery) recovery()
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(Icons.Default.TouchApp, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -150,23 +170,42 @@ fun SendScreen(state: NavigationState, place: PlaceResult?, shared: Boolean = fa
                 state.scooters.value == null -> ScooterSkeletons()
                 state.scooters.value.isEmpty() -> { EmptyPlaces("No scooters on this account yet"); SunshineButton(onRefresh, tone = ButtonTone.Secondary) { Text("Refresh") } }
                 else -> ScooterPicker(state.scooters.value, enabled, state.defaultScooterId, onSend, sendingId = sendingTarget?.configuration?.scooterId?.takeIf { state.sending }, acceptedId = acceptedTarget?.configuration?.scooterId,
-                    replacement = state.destination.value?.place?.let { current -> state.configuration.scooterId?.let { it to current.label } })
+                    replacement = state.destination.value?.place?.let { current -> state.configuration.scooterId?.let { it to current.label } },
+                    onCardBounds = { id, bounds -> if (id == focusedId) focusedBounds = bounds })
             }
         }
-        AnimatedVisibility(acceptedTarget != null, enter = slideInVertically { it / 4 } + fadeIn()) {
-            Box(Modifier.navigationBarsPadding().padding(horizontal = 20.dp, vertical = 8.dp)) { acceptedTarget?.let { AcceptedPanel(it.configuration.scooterName, onDone, onAnother) } }
+        if (hasResult) {
+            val rejected = hasRecovery && state.error != null && state.lastCommandOutcome !is CommandOutcome.DeliveryUncertain
+            val tone = if (rejected || hasFailure) BadgeTone.Error else if (hasRecovery) BadgeTone.Warning else BadgeTone.Success
+            ResultDock(tone, Modifier.align(Alignment.BottomCenter).widthIn(max = 600.dp).onSizeChanged { sheetHeight = it.height }) {
+                when {
+                    hasRecovery -> recovery()
+                    acceptedTarget != null -> AcceptedPanel(acceptedTarget.configuration.scooterName, onDone, onAnother)
+                    hasFailure -> {
+                        val message = state.error!!
+                        val resolving = place == null
+                        val reconnect = state.configuration.needsPermissionUpgrade || message.contains("login", true) || message.contains("token", true) || message.contains("Settings", true)
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) { ResultIcon(BadgeTone.Error); Text(if (resolving) "Couldn't find this place" else "Couldn't send this place", fontWeight = FontWeight.SemiBold, fontSize = 19.sp) }
+                            Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            SunshineButton(if (resolving) onEdit else if (reconnect) onSettings else { { showFailure = false } }) { Text(if (resolving) "Edit place" else if (reconnect) "Reconnect" else "Choose another scooter") }
+                        }
+                    }
+                }
+            }
+        }
         }
     }
 }
 
 @Composable
 fun AcceptedPanel(name: String, onDone: () -> Unit = {}, onAnother: () -> Unit = {}) {
-    SunshineCard(Modifier.fillMaxWidth(), panel = true, accent = Color(0xFF22C55E), containerColor = if (MaterialTheme.colorScheme.background == Color(0xFF0F0E1F)) Color(0xFF162D29) else Color(0xFFF0FDF4)) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) { ResultIcon(); Text("Sent to $name", fontSize = 19.sp, fontWeight = FontWeight.Bold) }
-            Text("Sunshine accepted the destination. Check the dashboard to confirm.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            SunshineButton(onDone) { Text("Done") }
-            SunshineButton(onAnother, tone = ButtonTone.Secondary) { Text("Send to another") }
+    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) { ResultIcon(); Text("Sent to $name", fontSize = 19.sp, fontWeight = FontWeight.Bold) }
+        Text("Sunshine accepted the destination. Check the dashboard to confirm.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SunshineButton(onDone, Modifier.weight(1f)) { Text("Done") }
+            SunshineButton(onAnother, Modifier.weight(1f), tone = ButtonTone.Secondary) { Text("Send to another") }
         }
     }
 }

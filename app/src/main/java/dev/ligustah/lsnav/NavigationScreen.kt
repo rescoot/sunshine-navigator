@@ -157,8 +157,8 @@ fun NavigationScreen(
         model.updateQuery(value, correctingRequestId)
         if (correctingRequestId != null) onShareConsumed()
     }
-    val recovery: @Composable () -> Unit = {
-        UncertainRecovery(state, model, onSettings)
+    val recovery: @Composable (Boolean) -> Unit = { docked ->
+        UncertainRecovery(state, model, onSettings, docked)
         if (state.pendingCommandLoading) Text("Restoring previous request status…", style = MaterialTheme.typography.bodySmall)
     }
     val showSend = visibleDestination != null || state.incomingResolutionRequired || (!sharedText.isNullOrBlank() && visibleResults.isNotEmpty())
@@ -183,13 +183,13 @@ fun NavigationScreen(
                 val existing = state.personalPlaces.value?.let { it.favorites + it.recent }?.firstOrNull { it.id == destinationSavedId || it.place.coordinates == place.coordinates }
                 openFavoriteEditor(existing?.id, place, place.label)
             } }, onEdit = { clearPlace(); queryChanged(displayedQuery) },
-            onDone = { clearPlace(); onDone() }, onAnother = { hideAccepted = true }, recovery = recovery)
+            onDone = { clearPlace(); onDone() }, onAnother = { hideAccepted = true }, recovery = { recovery(true) })
         else HomeScreen(state, displayedQuery, visibleResults, queryChanged,
             onOpen = { place, id -> openPlace(place, id, currentSharedResults && id == null); if (currentSharedResults && !sharedText.isNullOrBlank()) onShareConsumed() },
             onEdit = { saved -> openFavoriteEditor(saved.id, saved.place, saved.place.label) },
             onStar = { saved -> model.setFavorite(saved, !saved.isFavorite) },
             onAdd = { addingFavorite = true },
-            onSettings = onSettings, onRefresh = model::refresh, onClear = { clearWarning = true }, onChange = { showBrowseVehicles = true }, recovery = recovery)
+            onSettings = onSettings, onRefresh = model::refresh, onClear = { clearWarning = true }, onChange = { showBrowseVehicles = true }, recovery = { recovery(false) })
     }
     if (showBrowseVehicles) ModalBottomSheet(onDismissRequest = { showBrowseVehicles = false }) {
         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

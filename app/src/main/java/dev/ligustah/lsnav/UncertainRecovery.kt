@@ -1,6 +1,8 @@
 package dev.ligustah.lsnav
 
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -17,11 +19,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun UncertainRecovery(state: NavigationState, model: NavigationViewModel, onReconnect: () -> Unit = {}) {
+internal fun UncertainRecovery(state: NavigationState, model: NavigationViewModel, onReconnect: () -> Unit = {}, docked: Boolean = false) {
     val target = state.uncertainTarget
     if (target == null && !state.pendingCommandForOtherAccount) return
     var confirmAcknowledgement by remember { mutableStateOf(false) }
-    UncertainPanel(state, model::checkUncertainCommand, model::dismissCheckedUncertainCommand, { confirmAcknowledgement = true }, onReconnect)
+    UncertainPanel(state, model::checkUncertainCommand, model::dismissCheckedUncertainCommand, { confirmAcknowledgement = true }, onReconnect, docked)
     if (confirmAcknowledgement) AlertDialog(
         onDismissRequest = { confirmAcknowledgement = false },
         title = { Text("Confirm destination check") },
@@ -32,16 +34,16 @@ internal fun UncertainRecovery(state: NavigationState, model: NavigationViewMode
 }
 
 @Composable
-fun UncertainPanel(state: NavigationState, onCheck: () -> Unit = {}, onDismissChecked: () -> Unit = {}, onAcknowledge: () -> Unit = {}, onReconnect: () -> Unit = {}) {
+fun UncertainPanel(state: NavigationState, onCheck: () -> Unit = {}, onDismissChecked: () -> Unit = {}, onAcknowledge: () -> Unit = {}, onReconnect: () -> Unit = {}, docked: Boolean = false) {
     val target = state.uncertainTarget
     val rejected = target != null && state.error != null && state.lastCommandOutcome !is CommandOutcome.DeliveryUncertain
     val reconnect = rejected && state.configuration.oauthSessionId != null &&
         (state.configuration.needsPermissionUpgrade || listOf("login", "token", "permission", "reconnect").any { state.error!!.contains(it, true) })
     val dark = MaterialTheme.colorScheme.background == androidx.compose.ui.graphics.Color(0xFF0F0E1F)
     val panelColor = androidx.compose.ui.graphics.Color(if (rejected) { if (dark) 0xFF331E2B else 0xFFFEF2F2 } else { if (dark) 0xFF29251F else 0xFFFEFCE8 })
-    SunshineCard(panel = true, accent = if (rejected) androidx.compose.ui.graphics.Color(0xFFEF4444) else androidx.compose.ui.graphics.Color(0xFFEAB308), containerColor = panelColor) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(if (rejected) "Couldn't send to ${target!!.configuration.scooterName}" else "Not sure it arrived", style = MaterialTheme.typography.titleMedium)
+    val body: @Composable () -> Unit = {
+        Column(Modifier.fillMaxWidth().padding(horizontal = if (docked) 0.dp else 16.dp, vertical = if (docked) 8.dp else 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) { ResultIcon(if (rejected) BadgeTone.Error else BadgeTone.Warning); Text(if (rejected) "Couldn't send to ${target!!.configuration.scooterName}" else "Not sure it arrived", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
             if (rejected) Text(state.error!!, color = MaterialTheme.colorScheme.error)
             val checked = state.uncertainCheckedDestination
             when {
@@ -61,10 +63,11 @@ fun UncertainPanel(state: NavigationState, onCheck: () -> Unit = {}, onDismissCh
                     Text(if (state.checkingUncertain) "Checking destination…" else "Check scooter")
                 }
             }
-            if (reconnect) TextButton(onClick = onReconnect, enabled = !state.checkingUncertain && !state.pendingCommandLoading) { Text("Reconnect") }
-            TextButton(onClick = onAcknowledge, enabled = !state.checkingUncertain && !state.pendingCommandLoading) {
-                Text("I'll check myself")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (reconnect) TextButton(onClick = onReconnect, enabled = !state.checkingUncertain && !state.pendingCommandLoading) { Text("Reconnect") }
+                TextButton(onClick = onAcknowledge, enabled = !state.checkingUncertain && !state.pendingCommandLoading) { Text("I'll check myself") }
             }
         }
     }
+    if (docked) body() else SunshineCard(panel = true, accent = if (rejected) androidx.compose.ui.graphics.Color(0xFFEF4444) else androidx.compose.ui.graphics.Color(0xFFEAB308), containerColor = panelColor) { body() }
 }

@@ -73,11 +73,11 @@ class SunshineScreensTest(private val scene: String, private val dark: Boolean) 
                             "send_accepted" -> SendScreen(state, place, acceptedTarget = target, enabled = true)
                             "send_uncertain" -> {
                                 val uncertain = state.copy(uncertainTarget = target)
-                                SendScreen(uncertain, place, recovery = { UncertainPanel(uncertain) })
+                                SendScreen(uncertain, place, recovery = { UncertainPanel(uncertain, docked = true) })
                             }
                             "send_failed" -> {
                                 val failed = state.copy(error = "This account lacks permission for Bluebird. Check its sharing permissions.", uncertainTarget = target)
-                                SendScreen(failed, place, recovery = { UncertainPanel(failed) })
+                                SendScreen(failed, place, recovery = { UncertainPanel(failed, docked = true) })
                             }
                             "settings" -> AccountScreen(setup.copy(profile = AppProfile(config, true)))
                             "editor" -> {
