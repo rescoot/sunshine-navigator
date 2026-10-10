@@ -73,8 +73,10 @@ actor SunshineAPI {
             }
             guard (200..<300).contains(response.statusCode), let receipt = try? JSONDecoder().decode(Receipt.self, from: data), ["success", "accepted"].contains(receipt.status) else { throw NavigatorError.uncertain }
             try await ledger.clear(command)
-        } catch let error as NavigatorError { throw error }
-        catch { throw NavigatorError.uncertain }
+        } catch let error as NavigatorError {
+            if case .http(let status) = error, [400, 401, 403, 404, 422].contains(status) { throw error }
+            throw NavigatorError.uncertain
+        } catch { throw NavigatorError.uncertain }
     }
     func receipt(_ command: PendingCommand, session: Session) async throws -> String {
         guard command.identity == session.identity else { throw NavigatorError.signedOut }

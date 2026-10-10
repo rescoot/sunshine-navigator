@@ -25,6 +25,7 @@ final class NavigatorTests: XCTestCase {
         XCTAssertEqual(place.label, "Park")
         XCTAssertThrowsError(try PlaceInput.parse("geo:0,0"))
         XCTAssertThrowsError(try PlaceInput.parse("geo:999,13?q=Berlin"))
+        XCTAssertThrowsError(try PlaceInput.parse("geo:999,13?q=52,13"))
     }
     func testPlainZeroIsNotGeoPlaceholder() throws {
         XCTAssertEqual(try PlaceInput.parse("0,0"), .place(Place(coordinate: Coordinate(latitude: 0, longitude: 0), label: "Pinned location")))
@@ -60,6 +61,12 @@ final class NavigatorTests: XCTestCase {
         XCTAssertEqual(try serverURL("https://example.org/api/v1").absoluteString, "https://example.org")
         for value in ["http://example.org", "https://user:pass@example.org", "https://example.org?token=secret", "https://example.org#fragment"] { XCTAssertThrowsError(try serverURL(value)) }
     }
+    func testEquivalentOriginsShareAnAccountNamespace() throws {
+        XCTAssertEqual(try serverURL("HTTPS://EXAMPLE.ORG:443/api/v1/"), try serverURL("https://example.org"))
+    }
+    func testStorageErrorDoesNotClaimTransportOutcome() {
+        XCTAssertEqual(NavigatorError.storage.localizedDescription, "Secure storage is unavailable.")
+    }
     func testOAuthPKCEAndState() throws {
         let request = try AuthorizationRequest(server: serverURL("https://example.org"), clientID: "public-client")
         XCTAssertEqual(request.verifier.count, 43)
@@ -92,6 +99,8 @@ actor TestCredentials: Credentials {
 }
 actor TestTransport: HTTPTransport {
     var requests: [URLRequest] = []
+    var beforeResponse: (@Sendable () throws -> Void)?
+    func setBeforeResponse(_ action: @escaping @Sendable () throws -> Void) { beforeResponse = action }
     let status: Int
     let body: String
     let failure: Bool
@@ -99,6 +108,7 @@ actor TestTransport: HTTPTransport {
     func execute(_ request: URLRequest) throws -> (Data, HTTPURLResponse) {
         requests.append(request)
         if failure { throw URLError(.timedOut) }
+        try beforeResponse?()
         return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
     }
 }
@@ -130,6 +140,18 @@ final class CommandTests: XCTestCase {
         do { try await api.send(command, session: session); XCTFail() } catch { XCTAssertEqual(error as? NavigatorError, .uncertain) }
         let pending = try await ledger.pending(session.identity); XCTAssertEqual(pending, command)
         do { try await api.send(command, session: session); XCTFail() } catch { XCTAssertEqual(error as? NavigatorError, .pending) }
+        let requests = await transport.requests; XCTAssertEqual(requests.count, 1)
+    }
+    func testStorageFailureAfterDispatchRemainsUncertain() async throws {
+        let transport = TestTransport(); let (api, ledger, session, command) = try fixture(transport)
+        let lock = ledger.files.root.appendingPathComponent("commands.lock")
+        await transport.setBeforeResponse {
+            try FileManager.default.removeItem(at: lock)
+            try FileManager.default.createDirectory(at: lock, withIntermediateDirectories: false)
+        }
+        do { try await api.send(command, session: session); XCTFail() } catch { XCTAssertEqual(error as? NavigatorError, .uncertain) }
+        let stored = try ledger.files.read("commands.json", as: [String: PendingCommand].self)
+        XCTAssertEqual(stored?[session.identity], command)
         let requests = await transport.requests; XCTAssertEqual(requests.count, 1)
     }
     func testDefiniteRejectionClearsPending() async throws {

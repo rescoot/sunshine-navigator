@@ -95,7 +95,7 @@ enum NavigatorError: Error, LocalizedError, Equatable {
         case .signedOut: return "Sign in to Sunshine again."
         case .pending: return "Check the pending request before sending another command."
         case .http(let code): return code == 401 ? "Sign in to Sunshine again." : "Sunshine returned HTTP \(code)."
-        case .storage: return "Secure storage is unavailable. No command was sent."
+        case .storage: return "Secure storage is unavailable."
         case .uncertain: return "Delivery is uncertain. Check the request status; it will not be sent again automatically."
         }
     }
@@ -109,6 +109,8 @@ func serverURL(_ value: String) throws -> URL {
     guard var parts = URLComponents(string: value.trimmingCharacters(in: .whitespacesAndNewlines)),
           parts.scheme?.lowercased() == "https", let host = parts.host, !host.isEmpty,
           parts.user == nil, parts.password == nil, parts.query == nil, parts.fragment == nil else { throw NavigatorError.invalidInput }
+    parts.scheme = "https"; parts.host = host.lowercased()
+    if parts.port == 443 { parts.port = nil }
     parts.path = parts.path.replacingOccurrences(of: #"/api/v1/?$"#, with: "", options: .regularExpression).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     if !parts.path.isEmpty { parts.path = "/" + parts.path }
     guard let url = parts.url else { throw NavigatorError.invalidInput }

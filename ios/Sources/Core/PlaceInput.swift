@@ -35,14 +35,12 @@ enum PlaceInput {
         if !matches(pairPattern, text).isEmpty { throw NavigatorError.invalidInput }
         if text.hasPrefix("geo:") {
             let pieces = String(text.dropFirst(4)).components(separatedBy: "?")
-            let explicit = pair(pieces[0].components(separatedBy: ";")[0])
+            guard let explicit = pair(pieces[0].components(separatedBy: ";")[0]) else { throw NavigatorError.invalidInput }
             let query = pieces.count > 1 ? URLComponents(string: "https://geo.invalid/?" + pieces[1])?.queryItems?.first(where: { $0.name == "q" })?.value : nil
-            let validExplicit = explicit.flatMap { $0.latitude == 0 && $0.longitude == 0 ? nil : $0 }
+            let validExplicit: Coordinate? = explicit.latitude == 0 && explicit.longitude == 0 ? nil : explicit
             let queryPoint = query.flatMap(pair).flatMap { $0.latitude == 0 && $0.longitude == 0 ? nil : $0 }
             let name = query.flatMap { label($0) }
             if let point = validExplicit ?? queryPoint { return .place(Place(coordinate: point, label: name ?? "Pinned location")) }
-            // Invalid explicit coordinates must not silently become another destination.
-            if explicit == nil { throw NavigatorError.invalidInput }
             if let name { return .search(name) }
             throw NavigatorError.invalidInput
         }
