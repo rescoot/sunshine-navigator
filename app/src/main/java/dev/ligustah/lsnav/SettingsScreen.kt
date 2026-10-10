@@ -28,7 +28,7 @@ fun SettingsScreen(model: SettingsViewModel = viewModel(), onSignIn: (String, St
     Column(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (!onboarding) TextButton(onClick = onBack) { Text("‹  Back") }
         BrandHeader()
-        SharedPlacePreviewCard(sharedText, "Connect to continue. Nothing is sent during setup.")
+        SharedPlacePreviewCard(sharedText, "Your place stays here. Nothing is sent from settings.")
         when {
             onboarding && authenticated -> Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.primaryContainer) {
                 Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -58,7 +58,9 @@ fun SettingsScreen(model: SettingsViewModel = viewModel(), onSignIn: (String, St
             TextButton(onClick = { advanced = !advanced }) { Text(if (advanced) "Hide advanced options" else "Advanced connection options") }
             if (advanced) ConnectionFields(state, model)
         } else {
-            val reconnectField = if (configuration.oauthSessionId != null) reconnect else null
+            val reconnectField = if (configuration.oauthSessionId != null) {
+                { if (model.beginLogin()) onSignIn(state.draft.baseUrl, state.draft.oauthClientId) }
+            } else null
             if (editConnection) ConnectionFields(state, model, reconnect = reconnectField)
             if (state.scooters.loading && state.scooters.value == null) LinearProgressIndicator(Modifier.fillMaxWidth())
             state.scooters.error?.let { message ->
