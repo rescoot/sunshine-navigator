@@ -305,6 +305,25 @@ class NavigationViewModel @JvmOverloads constructor(
         searchJob = viewModelScope.launch { kotlinx.coroutines.delay(500); search() }
     }
 
+    fun resolveIncoming(text: String) {
+        if (text.isBlank() || text.length > MapsIntentParser.MAX_INPUT_LENGTH) return
+        val generation = ++searchGeneration
+        searchJob?.cancel()
+        mutableState.value = mutableState.value.copy(query = text, results = emptyList(), searching = true, error = null)
+        searchJob = viewModelScope.launch {
+            try {
+                val results = resolver.resolve(text)
+                if (generation == searchGeneration) mutableState.value = mutableState.value.copy(results = results,
+                    error = if (results.isEmpty()) "No destination found. Choose a place with a clear destination." else null)
+            } catch (error: CancellationException) { throw error
+            } catch (error: Exception) {
+                if (generation == searchGeneration) mutableState.value = mutableState.value.copy(error = userMessage(error))
+            } finally {
+                if (generation == searchGeneration) mutableState.value = mutableState.value.copy(searching = false)
+            }
+        }
+    }
+
     fun search() {
         val query = mutableState.value.query
         if (query.isBlank()) return

@@ -1,5 +1,6 @@
 package dev.ligustah.lsnav
 
+import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -29,8 +30,20 @@ enum class Screen { Navigation, Settings }
 class SettingsActivity : ComponentActivity() {
     private val settingsModel: SettingsViewModel by viewModels()
     private val authorizationService by lazy { AuthorizationService(this) }
+    private val sharedInput = mutableStateOf<String?>(null)
     private val authorizationResult = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         settingsModel.completeLogin(it.data)
+    }
+
+    private fun receiveShare(intent: Intent?) {
+        sharedInput.value = runCatching { intent?.let(MapsIntentParser::extractIntentText) }.getOrNull()
+            ?.takeIf { it.isNotBlank() && it.length <= MapsIntentParser.MAX_INPUT_LENGTH }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        receiveShare(intent)
     }
 
     private fun signIn(baseUrl: String, clientId: String) {
@@ -42,10 +55,17 @@ class SettingsActivity : ComponentActivity() {
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("pending_shared_text", sharedInput.value)
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onDestroy() { authorizationService.dispose(); super.onDestroy() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) receiveShare(intent)
+        else sharedInput.value = savedInstanceState.getString("pending_shared_text")
         val dark = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
         configureNavigationWindow(window, dark)
         setContent {
@@ -58,11 +78,13 @@ class SettingsActivity : ComponentActivity() {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                         when (destination) {
-                            Screen.Navigation -> NavigationScreen(onSettings = { screen = Screen.Settings })
-                            Screen.Settings -> SettingsScreen(settingsModel, ::signIn) {
-                                screen = Screen.Navigation
-                                if (onboarding && settings.profile.onboardingComplete) screen = Screen.Navigation
-                            }
+                            Screen.Navigation -> NavigationScreen(
+                                onSettings = { screen = Screen.Settings },
+                                onDone = { sharedInput.value = null },
+                                sharedText = sharedInput.value,
+                                onShareConsumed = { sharedInput.value = null }
+                            )
+                            Screen.Settings -> SettingsScreen(settingsModel, ::signIn, { screen = Screen.Navigation }, sharedInput.value)
                         }
                     }
                 }

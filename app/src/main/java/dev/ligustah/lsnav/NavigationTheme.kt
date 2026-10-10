@@ -31,11 +31,11 @@ fun configureNavigationWindow(window: Window, dark: Boolean) {
 }
 
 private val lightColors = lightColorScheme(
-    primary = Color(0xFF087889),
+    primary = Color(0xFF4F46E5),
     onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFD7F2F5),
-    onPrimaryContainer = Color(0xFF063D46),
-    inversePrimary = Color(0xFF58B7C3),
+    primaryContainer = Color(0xFFE0E7FF),
+    onPrimaryContainer = Color(0xFF1E1B4B),
+    inversePrimary = Color(0xFFA5B4FC),
     secondary = Color(0xFF2A2D30),
     onSecondary = Color(0xFFFFFFFF),
     secondaryContainer = Color(0xFFE4E7EA),
@@ -70,11 +70,11 @@ private val lightColors = lightColorScheme(
 )
 
 private val darkColors = darkColorScheme(
-    primary = Color(0xFF3DD8E8),
-    onPrimary = Color(0xFF00363D),
-    primaryContainer = Color(0xFF124C54),
-    onPrimaryContainer = Color(0xFFB9F5FB),
-    inversePrimary = Color(0xFF087889),
+    primary = Color(0xFFA5B4FC),
+    onPrimary = Color(0xFF1E1B4B),
+    primaryContainer = Color(0xFF312E81),
+    onPrimaryContainer = Color(0xFFE0E7FF),
+    inversePrimary = Color(0xFF4F46E5),
     secondary = Color(0xFFF0F0F0),
     onSecondary = Color(0xFF111111),
     secondaryContainer = Color(0xFF1E1E1E),
