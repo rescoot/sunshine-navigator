@@ -19,13 +19,22 @@ data class FavoriteEditorState(
 
 data class NavigationState(
     val configuration: AppConfiguration = AppConfiguration(),
+    val configurationLoaded: Boolean = false,
     val scooters: RemoteData<List<ScooterSummary>> = RemoteData(),
     val destination: RemoteData<NavigationTarget> = RemoteData(),
     val savedLocations: RemoteData<List<PlaceResult>> = RemoteData(),
     val personalPlaces: RemoteData<PersonalPlaces> = RemoteData(),
     val favoriteEditor: FavoriteEditorState = FavoriteEditorState(),
+    val favoriteMutationSequence: Long = 0,
     val sending: Boolean = false,
     val lastCommandOutcome: CommandOutcome? = null,
+    val uncertainTarget: CommandTarget? = null,
+    val uncertainCheckedDestination: NavigationTarget? = null,
+    val uncertainCheckError: String? = null,
+    val checkingUncertain: Boolean = false,
+    val pendingCommandForOtherAccount: Boolean = false,
+    val pendingCommandLoading: Boolean = true,
+    val defaultScooterId: Long? = null,
     val query: String = "",
     val results: List<PlaceResult> = emptyList(),
     val resolvedIncomingText: String? = null,
@@ -38,9 +47,10 @@ class NavigationViewModel @JvmOverloads constructor(
     private val savedState: SavedStateHandle,
     private val gateway: NavigationGateway = NavigationRepository.get(application),
     private val resolver: CoordinateResolver = CoordinateResolver(application),
-    private val configurations: kotlinx.coroutines.flow.Flow<AppConfiguration> = AppSettings(application).configuration
+    private val configurations: kotlinx.coroutines.flow.Flow<AppConfiguration> = AppSettings(application).configuration,
+    private val pendingCommands: PendingCommandPersistence = PendingCommandStore(application)
 ) : AndroidViewModel(application) {
-    private val mutableState = MutableStateFlow(NavigationState(query = savedState["query"] ?: ""))
+    private val mutableState = MutableStateFlow(NavigationState(favoriteMutationSequence = savedState["favoriteMutationSequence"] ?: 0L))
     val state: StateFlow<NavigationState> = mutableState
     private var storedConfiguration: AppConfiguration? = null
     private var scootersJob: Job? = null
@@ -55,6 +65,7 @@ class NavigationViewModel @JvmOverloads constructor(
     private var locationsGeneration = 0
     private var personalGeneration = 0
     private var searchGeneration = 0
+    private var commandGeneration = 0
 
     init {
         viewModelScope.launch {
@@ -64,17 +75,25 @@ class NavigationViewModel @JvmOverloads constructor(
                         val old = storedConfiguration
                         storedConfiguration = config
                         cancelResources()
+                        commandGeneration++
                         commandJob?.cancel()
+                        searchGeneration++; searchJob?.cancel()
                         if (old?.accountKey != config.accountKey) favoriteJob?.cancel()
                         mutableState.value = mutableState.value.copy(
-                            configuration = config, sending = false,
+                            configuration = config, configurationLoaded = true, sending = false, defaultScooterId = config.scooterId,
+                            query = if (old?.accountKey == config.accountKey) mutableState.value.query else "",
+                            results = if (old?.accountKey == config.accountKey) mutableState.value.results else emptyList(),
+                            resolvedIncomingText = if (old?.accountKey == config.accountKey) mutableState.value.resolvedIncomingText else null,
                             favoriteEditor = if (old?.accountKey == config.accountKey) mutableState.value.favoriteEditor else FavoriteEditorState(),
                             scooters = if (old?.accountKey == config.accountKey) mutableState.value.scooters else RemoteData(),
                             destination = RemoteData(), savedLocations = RemoteData(),
                             personalPlaces = if (old?.accountKey == config.accountKey) mutableState.value.personalPlaces else RemoteData(),
-                            lastCommandOutcome = null,
+                            lastCommandOutcome = null, uncertainTarget = null, uncertainCheckedDestination = null,
+                            uncertainCheckError = null, checkingUncertain = false,
+                            pendingCommandForOtherAccount = false, pendingCommandLoading = true,
                             error = null
                         )
+                        restorePendingCommand(config)
                         if (config.isAuthenticated) {
                             fetchScooters()
                             refreshPersonalPlaces()
@@ -108,6 +127,34 @@ class NavigationViewModel @JvmOverloads constructor(
         }
     }
 
+    private suspend fun restorePendingCommand(config: AppConfiguration) {
+        try {
+            val pending = pendingCommands.read()
+            if (storedConfiguration != config) return
+            if (!config.isAuthenticated) {
+                mutableState.value = mutableState.value.copy(pendingCommandLoading = false)
+                return
+            }
+            val current = mutableState.value
+            mutableState.value = current.copy(
+                pendingCommandLoading = false,
+                pendingCommandForOtherAccount = pending != null && pending.accountFingerprint != config.accountFingerprint(),
+                uncertainTarget = pending?.takeIf { it.accountFingerprint == config.accountFingerprint() }?.let {
+                    CommandTarget(config.copy(scooterId = it.scooterId, scooterName = it.scooterName), it.place)
+                },
+                lastCommandOutcome = pending?.takeIf { it.accountFingerprint == config.accountFingerprint() }?.let {
+                    CommandOutcome.DeliveryUncertain(CommandTarget(config.copy(scooterId = it.scooterId, scooterName = it.scooterName), it.place))
+                }
+            )
+        } catch (error: CancellationException) { throw error
+        } catch (_: Exception) {
+            if (storedConfiguration == config) mutableState.value = mutableState.value.copy(
+                pendingCommandLoading = false, pendingCommandForOtherAccount = true,
+                error = "A previous scooter request needs recovery, but its local status could not be read. Do not retry it yet."
+            )
+        }
+    }
+
     private fun cancelResources() {
         scooterGeneration++; scootersJob?.cancel()
         destinationGeneration++; destinationJob?.cancel()
@@ -128,8 +175,10 @@ class NavigationViewModel @JvmOverloads constructor(
                     val current = mutableState.value
                     val selectedId = current.configuration.scooterId
                     val selectedExists = selectedId == null || value.any { it.id == selectedId }
+                    val defaultScooterId = current.defaultScooterId?.takeIf { id -> value.any { it.id == id } }
                     mutableState.value = current.copy(
                         scooters = RemoteData.loaded(value),
+                        defaultScooterId = defaultScooterId,
                         configuration = if (selectedExists) current.configuration else current.configuration.copy(scooterId = null, scooterName = ""),
                         destination = if (selectedExists) current.destination else RemoteData(),
                         savedLocations = if (selectedExists) current.savedLocations else RemoteData()
@@ -256,7 +305,9 @@ class NavigationViewModel @JvmOverloads constructor(
             try {
                 if (editor.id == null) gateway.createFavorite(config, draft) else gateway.updateFavorite(config, editor.id, draft)
                 if (storedConfiguration?.accountKey == config.accountKey) {
-                    mutableState.value = mutableState.value.copy(favoriteEditor = FavoriteEditorState())
+                    val sequence = mutableState.value.favoriteMutationSequence + 1
+                    savedState["favoriteMutationSequence"] = sequence
+                    mutableState.value = mutableState.value.copy(favoriteEditor = FavoriteEditorState(), favoriteMutationSequence = sequence)
                     refreshPersonalPlaces(forceRefresh = true)
                 }
             } catch (error: CancellationException) { throw error
@@ -268,38 +319,46 @@ class NavigationViewModel @JvmOverloads constructor(
 
     fun setFavorite(savedPlace: SavedPlace, favorite: Boolean) {
         val config = mutableState.value.configuration
-        mutateFavorite(config) { gateway.setFavorite(config, savedPlace.id, savedPlace.place, favorite) }
+        val editor = mutableState.value.favoriteEditor.takeIf { it.id == savedPlace.id }
+            ?: FavoriteEditorState(savedPlace.id, FavoriteDraft(savedPlace.place.label, savedPlace.place))
+        mutateFavorite(config, editor) { gateway.setFavorite(config, savedPlace.id, savedPlace.place, favorite) }
     }
 
     fun deleteFavorite(savedPlace: SavedPlace) {
         val config = mutableState.value.configuration
-        mutateFavorite(config) { gateway.deleteFavorite(config, savedPlace.id) }
+        val editor = mutableState.value.favoriteEditor.takeIf { it.id == savedPlace.id }
+            ?: FavoriteEditorState(savedPlace.id, FavoriteDraft(savedPlace.place.label, savedPlace.place))
+        mutateFavorite(config, editor) { gateway.deleteFavorite(config, savedPlace.id) }
     }
 
-    private fun mutateFavorite(config: AppConfiguration, mutation: suspend () -> Unit) {
+    private fun mutateFavorite(config: AppConfiguration, editor: FavoriteEditorState, mutation: suspend () -> Unit) {
         if (!config.isAuthenticated || mutableState.value.favoriteEditor.saving) return
         if (config.favoritePermission == PermissionCapability.UpgradeRequired) {
-            mutableState.value = mutableState.value.copy(favoriteEditor = FavoriteEditorState(error = "Reconnect Sunshine and approve saved-place access to manage favorites."))
+            mutableState.value = mutableState.value.copy(favoriteEditor = editor.copy(error = "Reconnect Sunshine and approve saved-place access to manage favorites."))
             return
         }
         val owner = config.accountKey
-        mutableState.value = mutableState.value.copy(favoriteEditor = FavoriteEditorState(saving = true))
+        mutableState.value = mutableState.value.copy(favoriteEditor = editor.copy(saving = true, error = null))
         favoriteJob?.cancel()
         favoriteJob = viewModelScope.launch {
             try {
                 mutation()
-                if (storedConfiguration?.accountKey == owner) refreshPersonalPlaces(forceRefresh = true)
+                if (storedConfiguration?.accountKey == owner) {
+                    val sequence = mutableState.value.favoriteMutationSequence + 1
+                    savedState["favoriteMutationSequence"] = sequence
+                    mutableState.value = mutableState.value.copy(favoriteEditor = FavoriteEditorState(), favoriteMutationSequence = sequence)
+                    refreshPersonalPlaces(forceRefresh = true)
+                }
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) {
-                if (storedConfiguration?.accountKey == owner) mutableState.value = mutableState.value.copy(favoriteEditor = FavoriteEditorState(error = userMessage(error, config)))
+                if (storedConfiguration?.accountKey == owner) mutableState.value = mutableState.value.copy(favoriteEditor = editor.copy(saving = false, error = userMessage(error, config)))
             } finally {
-                if (storedConfiguration?.accountKey == owner) mutableState.value = mutableState.value.copy(favoriteEditor = mutableState.value.favoriteEditor.copy(saving = false))
+                if (storedConfiguration?.accountKey == owner && mutableState.value.favoriteEditor.saving) mutableState.value = mutableState.value.copy(favoriteEditor = mutableState.value.favoriteEditor.copy(saving = false))
             }
         }
     }
 
     fun updateQuery(value: String) {
-        savedState["query"] = value
         searchGeneration++
         searchJob?.cancel()
         mutableState.value = mutableState.value.copy(query = value, results = emptyList(), searching = false)
@@ -311,7 +370,7 @@ class NavigationViewModel @JvmOverloads constructor(
         if (text.isBlank() || text.length > MapsIntentParser.MAX_INPUT_LENGTH) return
         val generation = ++searchGeneration
         searchJob?.cancel()
-        mutableState.value = mutableState.value.copy(query = text, results = emptyList(), resolvedIncomingText = null, lastCommandOutcome = null, searching = true, error = null)
+        mutableState.value = mutableState.value.copy(query = text, results = emptyList(), resolvedIncomingText = null, searching = true, error = null)
         searchJob = viewModelScope.launch {
             try {
                 val results = resolver.resolve(text)
@@ -346,33 +405,104 @@ class NavigationViewModel @JvmOverloads constructor(
         }
     }
 
+    fun checkUncertainCommand() {
+        val current = mutableState.value
+        val target = current.uncertainTarget ?: return
+        if (current.checkingUncertain || current.sending || target.configuration.accountFingerprint() != current.configuration.accountFingerprint()) return
+        mutableState.value = current.copy(checkingUncertain = true, uncertainCheckError = null)
+        commandJob = viewModelScope.launch {
+            try {
+                val actual = gateway.destination(target.configuration)
+                if (mutableState.value.configuration.accountFingerprint() == target.configuration.accountFingerprint() && mutableState.value.uncertainTarget == target) {
+                    pendingCommands.clear()
+                    val latest = mutableState.value
+                    if (latest.configuration.accountFingerprint() == target.configuration.accountFingerprint() && latest.uncertainTarget == target) {
+                        mutableState.value = latest.copy(
+                            checkingUncertain = false, uncertainCheckedDestination = actual,
+                            uncertainCheckError = null, pendingCommandForOtherAccount = false
+                        )
+                    }
+                }
+            } catch (error: CancellationException) { throw error
+            } catch (error: Exception) {
+                if (mutableState.value.uncertainTarget == target) mutableState.value = mutableState.value.copy(
+                    checkingUncertain = false, uncertainCheckError = userMessage(error, target.configuration)
+                )
+            } finally {
+                if (mutableState.value.uncertainTarget == target && mutableState.value.checkingUncertain) {
+                    mutableState.value = mutableState.value.copy(checkingUncertain = false)
+                }
+            }
+        }
+    }
+
+    fun dismissCheckedUncertainCommand() {
+        val current = mutableState.value
+        if (current.uncertainCheckedDestination != null) mutableState.value = current.copy(
+            uncertainTarget = null, uncertainCheckedDestination = null, uncertainCheckError = null, lastCommandOutcome = null
+        )
+    }
+
+    fun acknowledgePendingCommandCheckedOutsideApp() {
+        val current = mutableState.value
+        if (current.checkingUncertain || current.pendingCommandLoading || (current.uncertainTarget == null && !current.pendingCommandForOtherAccount)) return
+        mutableState.value = current.copy(checkingUncertain = true, uncertainCheckError = null)
+        viewModelScope.launch {
+            try {
+                pendingCommands.clear()
+                mutableState.value = mutableState.value.copy(
+                    uncertainTarget = null, uncertainCheckedDestination = null, uncertainCheckError = null,
+                    pendingCommandForOtherAccount = false, lastCommandOutcome = null, checkingUncertain = false
+                )
+            } catch (error: CancellationException) { throw error
+            } catch (error: Exception) {
+                mutableState.value = mutableState.value.copy(checkingUncertain = false, uncertainCheckError = "Unable to clear the pending request. Check again or try later.")
+            }
+        }
+    }
+
     fun sendToScooter(target: CommandTarget) {
         val current = mutableState.value
         val config = current.configuration
         val scooter = current.scooters.value.orEmpty().firstOrNull { it.id == target.configuration.scooterId }
-        if (target.configuration != config || !config.isReady || scooter == null || scooter.online != true || current.sending) {
+        if (current.pendingCommandLoading || current.pendingCommandForOtherAccount || (current.uncertainTarget != null && current.uncertainCheckedDestination == null) || target.configuration != config || !config.isReady || scooter == null || scooter.online != true || current.sending) {
             mutableState.value = current.copy(error = if (scooter?.online == false) "This scooter is offline. Refresh or choose another scooter; your place is still here." else "Scooter or account access changed. Confirm the destination again.")
             return
         }
         if (target.place != null && !target.place.coordinates.isValid()) return
+        dispatchCommand(target)
+    }
+
+    private fun dispatchCommand(target: CommandTarget) {
         destinationGeneration++; destinationJob?.cancel()
         locationsGeneration++; locationsJob?.cancel()
-        mutableState.value = current.copy(sending = true, error = null, lastCommandOutcome = null)
+        val requestGeneration = ++commandGeneration
+        mutableState.value = mutableState.value.copy(sending = true, error = null, lastCommandOutcome = null, uncertainTarget = null, uncertainCheckedDestination = null)
         commandJob = viewModelScope.launch {
+            var requestStarted = false
             try {
+                pendingCommands.write(target)
+                requestStarted = true
                 val outcome = gateway.sendToScooter(target)
-                if (mutableState.value.configuration == target.configuration) {
+                pendingCommands.clear()
+                if (requestGeneration == commandGeneration && mutableState.value.configuration.accountFingerprint() == target.configuration.accountFingerprint()) {
                     mutableState.value = mutableState.value.copy(lastCommandOutcome = outcome)
                     refreshDestination(target.configuration)
                 }
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) {
-                val uncertain = error is java.io.IOException || error is org.openapitools.client.infrastructure.ServerException
-                mutableState.value = mutableState.value.copy(
-                    error = if (uncertain) "The server response was interrupted. Check this scooter's destination before retrying." else userMessage(error, target.configuration),
-                    lastCommandOutcome = if (uncertain) CommandOutcome.DeliveryUncertain(target) else null
-                )
-            } finally { mutableState.value = mutableState.value.copy(sending = false) }
+                val uncertain = requestStarted && (error is java.io.IOException || error is org.openapitools.client.infrastructure.ServerException)
+                if (requestGeneration == commandGeneration && mutableState.value.configuration.accountFingerprint() == target.configuration.accountFingerprint()) {
+                    mutableState.value = mutableState.value.copy(
+                        error = if (uncertain) "The server response was interrupted. Check this scooter's destination before retrying." else userMessage(error, target.configuration),
+                        lastCommandOutcome = if (uncertain) CommandOutcome.DeliveryUncertain(target) else null,
+                        uncertainTarget = if (requestStarted) target else null,
+                        uncertainCheckedDestination = null
+                    )
+                }
+            } finally {
+                if (requestGeneration == commandGeneration) mutableState.value = mutableState.value.copy(sending = false)
+            }
         }
     }
 
@@ -383,21 +513,11 @@ class NavigationViewModel @JvmOverloads constructor(
             return
         }
         val availableScooter = config.scooterId != null && mutableState.value.scooters.value.orEmpty().any { it.id == config.scooterId }
-        if (!config.isReady || !availableScooter || mutableState.value.sending) {
+        if (!config.isReady || !availableScooter || mutableState.value.sending || mutableState.value.pendingCommandLoading || mutableState.value.pendingCommandForOtherAccount || (mutableState.value.uncertainTarget != null && mutableState.value.uncertainCheckedDestination == null)) {
             if (config.isReady && !availableScooter) mutableState.value = mutableState.value.copy(error = "The selected scooter is no longer available. Choose a scooter and confirm again.")
             return
         }
         if (place != null && !place.coordinates.isValid()) return
-        destinationGeneration++; destinationJob?.cancel()
-        locationsGeneration++; locationsJob?.cancel()
-        mutableState.value = mutableState.value.copy(sending = true, error = null)
-        commandJob = viewModelScope.launch {
-            try {
-                if (place == null) gateway.clearDestination(config) else gateway.setDestination(config, place)
-                if (mutableState.value.configuration == config) refreshDestination(config)
-            } catch (error: CancellationException) { throw error
-            } catch (error: Exception) { mutableState.value = mutableState.value.copy(error = userMessage(error))
-            } finally { mutableState.value = mutableState.value.copy(sending = false) }
-        }
+        dispatchCommand(CommandTarget(config, place))
     }
 }

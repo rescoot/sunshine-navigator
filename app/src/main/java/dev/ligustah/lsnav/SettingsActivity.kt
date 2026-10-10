@@ -31,13 +31,16 @@ class SettingsActivity : ComponentActivity() {
     private val settingsModel: SettingsViewModel by viewModels()
     private val authorizationService by lazy { AuthorizationService(this) }
     private val sharedInput = mutableStateOf<String?>(null)
+    private val sharedJourney = mutableStateOf(false)
     private val authorizationResult = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         settingsModel.completeLogin(it.data)
     }
 
     private fun receiveShare(intent: Intent?) {
-        sharedInput.value = runCatching { intent?.let(MapsIntentParser::extractIntentText) }.getOrNull()
+        val value = runCatching { intent?.let(MapsIntentParser::extractIntentText) }.getOrNull()
             ?.takeIf { it.isNotBlank() && it.length <= MapsIntentParser.MAX_INPUT_LENGTH }
+        if (value != null) { sharedInput.value = value; sharedJourney.value = true }
+        else if (intent?.action == Intent.ACTION_MAIN) { sharedInput.value = null; sharedJourney.value = false }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -57,6 +60,7 @@ class SettingsActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString("pending_shared_text", sharedInput.value)
+        outState.putBoolean("shared_journey", sharedJourney.value)
         super.onSaveInstanceState(outState)
     }
 
@@ -65,7 +69,10 @@ class SettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) receiveShare(intent)
-        else sharedInput.value = savedInstanceState.getString("pending_shared_text")
+        else {
+            sharedInput.value = savedInstanceState.getString("pending_shared_text")
+            sharedJourney.value = savedInstanceState.getBoolean("shared_journey")
+        }
         val dark = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
         configureNavigationWindow(window, dark)
         setContent {
@@ -80,7 +87,7 @@ class SettingsActivity : ComponentActivity() {
                         when (destination) {
                             Screen.Navigation -> NavigationScreen(
                                 onSettings = { screen = Screen.Settings },
-                                onDone = { sharedInput.value = null },
+                                onDone = { if (sharedJourney.value) finish() },
                                 sharedText = sharedInput.value,
                                 onShareConsumed = { sharedInput.value = null }
                             )

@@ -24,6 +24,16 @@ class ViewModelTest {
     private val config = AppConfiguration("token", "https://example.org", 1, "Test scooter")
     private val place = PlaceResult(Coordinates(52.52, 13.41), "Berlin")
     private val resolver = CoordinateResolver(LocationLookup { listOf(place) })
+    private class MemoryPending : PendingCommandPersistence {
+        var pending: PendingCommand? = null
+        override suspend fun read() = pending
+        override suspend fun write(target: CommandTarget) {
+            pending = PendingCommand(target.configuration.accountFingerprint(), requireNotNull(target.configuration.scooterId), target.configuration.scooterName, target.place)
+        }
+        override suspend fun clear() { pending = null }
+    }
+    private fun model(gateway: NavigationGateway, configurations: kotlinx.coroutines.flow.Flow<AppConfiguration> = MutableStateFlow(config), pending: MemoryPending = MemoryPending()) =
+        NavigationViewModel(application, SavedStateHandle(), gateway, resolver, configurations, pending)
 
     @Before fun setup() { Dispatchers.setMain(dispatcher) }
     @After fun teardown() { Dispatchers.resetMain() }
@@ -35,6 +45,7 @@ class ViewModelTest {
         val locationIds = mutableListOf<Long?>()
         val locations = mutableMapOf<Long, CompletableDeferred<List<PlaceResult>>>()
         var lastWrite: AppConfiguration? = null
+        var writeError: Exception? = null
         val firstRead = CompletableDeferred<NavigationTarget>()
         val write = CompletableDeferred<Unit>()
         private var destinationReads = 0
@@ -58,19 +69,21 @@ class ViewModelTest {
             writes++
             lastWrite = configuration
             write.await()
+            writeError?.let { throw it }
             serverDestination = NavigationTarget(place)
         }
 
         override suspend fun clearDestination(configuration: AppConfiguration) {
             clears++
             write.await()
+            writeError?.let { throw it }
             serverDestination = NavigationTarget()
         }
     }
 
     @Test fun `navigation serializes writes and ignores cancelled initial reads`() = runTest(dispatcher) {
         val gateway = FakeGateway()
-        val model = NavigationViewModel(application, SavedStateHandle(), gateway, resolver, MutableStateFlow(config))
+        val model = model(gateway)
         runCurrent()
         assertTrue(model.state.value.destination.loading)
         model.send(place)
@@ -147,7 +160,7 @@ class ViewModelTest {
         gateway.locations[1] = oldLocations
         gateway.locations[2] = CompletableDeferred(listOf(otherPlace))
         val configurations = MutableStateFlow(config.copy(scooterId = null, scooterName = ""))
-        val model = NavigationViewModel(application, SavedStateHandle(), gateway, resolver, configurations)
+        val model = model(gateway, configurations)
         runCurrent()
         assertTrue(gateway.readIds.isEmpty())
         model.selectScooter(model.state.value.scooters.value!!.first())
@@ -174,7 +187,7 @@ class ViewModelTest {
                 gateway.write.complete(Unit)
             }
         }
-        val model = NavigationViewModel(application, SavedStateHandle(), source, resolver, MutableStateFlow(config))
+        val model = model(source)
         runCurrent()
         val tappedTarget = CommandTarget(config, place)
         model.sendToScooter(tappedTarget)
@@ -187,9 +200,23 @@ class ViewModelTest {
         assertFalse(model.state.value.sending)
     }
 
+    @Test fun `browsing another scooter does not change the saved default`() = runTest(dispatcher) {
+        val gateway = FakeGateway()
+        gateway.firstRead.complete(NavigationTarget())
+        val configurations = MutableStateFlow(config)
+        val model = model(gateway, configurations)
+        runCurrent()
+        assertEquals(1L, model.state.value.defaultScooterId)
+        model.selectScooter(model.state.value.scooters.value!!.last())
+        runCurrent()
+        assertEquals(2L, model.state.value.configuration.scooterId)
+        assertEquals(1L, model.state.value.defaultScooterId)
+        assertEquals(1L, configurations.value.scooterId)
+    }
+
     @Test fun `incoming share result is tied to the latest resolved input`() = runTest(dispatcher) {
         val gateway = FakeGateway()
-        val model = NavigationViewModel(application, SavedStateHandle(), gateway, resolver, MutableStateFlow(config))
+        val model = model(gateway)
         runCurrent()
         model.resolveIncoming("Berlin")
         runCurrent()
@@ -198,9 +225,65 @@ class ViewModelTest {
         assertNull(model.state.value.resolvedIncomingText)
     }
 
+    @Test fun `uncertain command survives a newer share and clears only after destination check`() = runTest(dispatcher) {
+        val gateway = FakeGateway()
+        gateway.firstRead.complete(NavigationTarget())
+        val pending = MemoryPending()
+        val online = ScooterSummary(1, "Test scooter", online = true)
+        val source = object : NavigationGateway by gateway {
+            override suspend fun scooters(configuration: AppConfiguration, forceRefresh: Boolean) = listOf(online)
+        }
+        val model = model(source, pending = pending)
+        runCurrent()
+        gateway.writeError = java.io.IOException("response lost")
+        model.sendToScooter(CommandTarget(config, place))
+        runCurrent()
+        gateway.write.complete(Unit)
+        runCurrent()
+        assertEquals(CommandTarget(config, place), model.state.value.uncertainTarget)
+        assertNotNull(pending.pending)
+        model.resolveIncoming("Berlin")
+        runCurrent()
+        assertEquals(CommandTarget(config, place), model.state.value.uncertainTarget)
+        gateway.writeError = null
+        model.checkUncertainCommand()
+        runCurrent()
+        assertNull(pending.pending)
+        assertNotNull(model.state.value.uncertainCheckedDestination)
+        assertEquals(CommandTarget(config, place), model.state.value.uncertainTarget)
+    }
+
+    @Test fun `pending command is restored only for its matching account`() = runTest(dispatcher) {
+        val gateway = FakeGateway()
+        gateway.firstRead.complete(NavigationTarget())
+        val pending = MemoryPending().apply {
+            pending = PendingCommand(config.accountFingerprint(), 1L, "Test scooter", place)
+        }
+        val model = model(gateway, pending = pending)
+        runCurrent()
+        assertEquals(CommandTarget(config, place), model.state.value.uncertainTarget)
+        assertNotNull(model.state.value.lastCommandOutcome)
+    }
+
+    @Test fun `pending command from another credential blocks retargeting`() = runTest(dispatcher) {
+        val gateway = FakeGateway()
+        gateway.firstRead.complete(NavigationTarget())
+        val pending = MemoryPending().apply {
+            pending = PendingCommand(config.accountFingerprint(), 1L, "Test scooter", place)
+        }
+        val changed = config.copy(token = "different-token")
+        val model = model(gateway, MutableStateFlow(changed), pending)
+        runCurrent()
+        assertTrue(model.state.value.pendingCommandForOtherAccount)
+        assertNull(model.state.value.uncertainTarget)
+        model.sendToScooter(CommandTarget(changed, place))
+        runCurrent()
+        assertEquals(0, gateway.writes)
+    }
+
     @Test fun `navigation rejects a confirmation for a different scooter`() = runTest(dispatcher) {
         val gateway = FakeGateway()
-        val model = NavigationViewModel(application, SavedStateHandle(), gateway, resolver, MutableStateFlow(config))
+        val model = model(gateway)
         runCurrent()
         model.selectScooter(model.state.value.scooters.value!!.last())
         model.send(place, config)

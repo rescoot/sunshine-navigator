@@ -14,24 +14,25 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalDensity
 import coil.compose.AsyncImage
 
 @Composable
 fun ScooterPicker(
-    configuration: AppConfiguration,
     scooters: List<ScooterSummary>,
     enabled: Boolean,
+    defaultScooterId: Long?,
     onSelect: (ScooterSummary) -> Unit,
     placeLabel: String = "this place"
 ) {
     if (scooters.isEmpty()) return
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val columns = if (maxWidth >= 600.dp) 2 else 1
+        val columns = if (maxWidth >= 320.dp && LocalDensity.current.fontScale < 1.3f) 2 else 1
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             scooters.chunked(columns).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     row.forEach { scooter ->
-                        ScooterTile(scooter, scooter.id == configuration.scooterId, enabled, { onSelect(scooter) }, placeLabel, Modifier.weight(1f))
+                        ScooterTile(scooter, scooter.id == defaultScooterId, enabled, { onSelect(scooter) }, placeLabel, Modifier.weight(1f))
                     }
                     repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                 }

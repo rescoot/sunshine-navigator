@@ -88,7 +88,7 @@ private fun ConnectionFields(state: SettingsState, model: SettingsViewModel, rec
     if (reconnect != null) Button(onClick = reconnect, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("Reconnect with Sunshine") }
     HorizontalDivider()
     Text("Manual token", style = MaterialTheme.typography.titleMedium)
-    Text("Use a token from a trusted Sunshine server. It is stored in the app's private encrypted session storage.", style = MaterialTheme.typography.bodySmall)
+    Text("Use a token from a trusted Sunshine server. It stays in this app's private, non-backed-up settings storage.", style = MaterialTheme.typography.bodySmall)
     OutlinedTextField(state.draft.token, model::updateToken, label = { Text("API token") }, visualTransformation = PasswordVisualTransformation(),
         enabled = !state.busy, singleLine = true, modifier = Modifier.fillMaxWidth())
     OutlinedButton(onClick = model::connectManual, enabled = !state.busy && state.draft.token.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Connect with token") }

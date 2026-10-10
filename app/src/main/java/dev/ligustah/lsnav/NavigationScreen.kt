@@ -42,21 +42,55 @@ fun NavigationScreen(
         if (latitude != null && longitude != null && label != null) PlaceResult(Coordinates(latitude, longitude), label) else null
     }) }
     var destination by rememberSaveable(stateSaver = destinationSaver) { mutableStateOf<PlaceResult?>(null) }
-    var favoriteDraftPlace by remember { mutableStateOf<PlaceResult?>(null) }
-    var favoriteDraftId by remember { mutableStateOf<Long?>(null) }
-    var favoriteLabel by remember { mutableStateOf("") }
-    var favoriteSaveStarted by remember { mutableStateOf(false) }
+    var destinationOwner by rememberSaveable { mutableStateOf<String?>(null) }
+    var destinationIsExternal by rememberSaveable { mutableStateOf(false) }
+    var destinationSavedId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var favoriteDraftPlace by rememberSaveable(stateSaver = destinationSaver) { mutableStateOf<PlaceResult?>(null) }
+    var favoriteDraftId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var favoriteDraftIsFavorite by rememberSaveable { mutableStateOf(false) }
+    var favoriteDraftOwner by rememberSaveable { mutableStateOf<String?>(null) }
+    var favoriteLabel by rememberSaveable { mutableStateOf("") }
+    var favoriteSaveStartSequence by rememberSaveable { mutableStateOf(state.favoriteMutationSequence) }
+    var deleteFavoritePending by remember { mutableStateOf<SavedPlace?>(null) }
+    var showBrowseVehicles by rememberSaveable { mutableStateOf(false) }
     var clearWarning by remember { mutableStateOf(false) }
     var sendingTarget by remember { mutableStateOf<CommandTarget?>(null) }
-    var uncertainNeedsCheck by remember { mutableStateOf(false) }
-    var uncertainCheckStartedAt by remember { mutableStateOf<Long?>(null) }
-    val uncertainTarget = (state.lastCommandOutcome as? CommandOutcome.DeliveryUncertain)?.target
-    LaunchedEffect(uncertainTarget) {
-        if (uncertainTarget != null) { uncertainNeedsCheck = true; uncertainCheckStartedAt = null }
+    val ownerFingerprint = state.configuration.accountFingerprint()
+    val visibleDestination = destination?.takeIf { destinationIsExternal || (state.configurationLoaded && destinationOwner == ownerFingerprint) }
+    val visibleFavoriteDraft = favoriteDraftPlace?.takeIf { state.configurationLoaded && favoriteDraftOwner == ownerFingerprint }
+    val openPlace: (PlaceResult, Long?) -> Unit = { place, savedId ->
+        destination = place
+        destinationOwner = ownerFingerprint
+        destinationIsExternal = false
+        destinationSavedId = savedId
     }
-    LaunchedEffect(state.destination.updatedAt, state.destination.loading, uncertainCheckStartedAt) {
-        val startedAt = uncertainCheckStartedAt
-        if (startedAt != null && !state.destination.loading && state.destination.updatedAt > startedAt) uncertainNeedsCheck = false
+    val clearPlace = {
+        destination = null
+        destinationOwner = null
+        destinationIsExternal = false
+        destinationSavedId = null
+    }
+    val openFavoriteEditor: (Long?, PlaceResult, String) -> Unit = { id, place, label ->
+        favoriteDraftPlace = place
+        favoriteDraftId = id
+        favoriteDraftIsFavorite = id != null && state.personalPlaces.value?.favorites.orEmpty().any { it.id == id }
+        favoriteDraftOwner = ownerFingerprint
+        favoriteLabel = label
+        favoriteSaveStartSequence = state.favoriteMutationSequence
+        model.editFavorite(id, FavoriteDraft(label, place))
+    }
+    LaunchedEffect(state.configurationLoaded, ownerFingerprint) {
+        if (!state.configurationLoaded) return@LaunchedEffect
+        if (destinationOwner != null && destinationOwner != ownerFingerprint && !destinationIsExternal) clearPlace()
+        if (favoriteDraftOwner != null && favoriteDraftOwner != ownerFingerprint) {
+            favoriteDraftPlace = null; favoriteDraftId = null; favoriteDraftIsFavorite = false; favoriteDraftOwner = null
+            model.editFavorite(null, null)
+        }
+    }
+    LaunchedEffect(favoriteDraftPlace, favoriteDraftId, favoriteDraftOwner) {
+        if (favoriteDraftPlace != null && favoriteDraftOwner == ownerFingerprint && !state.favoriteEditor.saving) {
+            model.editFavorite(favoriteDraftId, FavoriteDraft(favoriteLabel, favoriteDraftPlace!!))
+        }
     }
 
     DisposableEffect(lifecycleOwner, model) {
@@ -68,22 +102,24 @@ fun NavigationScreen(
     LaunchedEffect(state.results, state.resolvedIncomingText, sharedText) {
         if (!sharedText.isNullOrBlank() && state.resolvedIncomingText == sharedText && state.results.size == 1) {
             destination = state.results.single()
+            destinationOwner = null
+            destinationIsExternal = true
+            destinationSavedId = null
             onShareConsumed()
         }
     }
-    LaunchedEffect(state.favoriteEditor) {
-        if (favoriteSaveStarted && !state.favoriteEditor.saving && state.favoriteEditor.draft == null && state.favoriteEditor.error == null) {
-            favoriteDraftPlace = null
-            favoriteSaveStarted = false
-        }
+    LaunchedEffect(state.favoriteMutationSequence) {
+        if (favoriteDraftPlace != null && state.favoriteMutationSequence > favoriteSaveStartSequence) favoriteDraftPlace = null
     }
-    BackHandler(destination != null) { destination = null }
+    BackHandler(destination != null) { clearPlace() }
 
-    if (destination != null) {
-        val place = destination!!
+    if (visibleDestination != null) {
+        val place = visibleDestination
         Column(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            UncertainRecovery(state, model)
+            if (state.pendingCommandLoading) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Restoring previous request status…") }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                TextButton(onClick = { destination = null }) { Text("‹  Places") }
+                TextButton(onClick = clearPlace) { Text("‹  Places") }
                 IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Account and settings") }
             }
             Text("Send place", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
@@ -92,8 +128,13 @@ fun NavigationScreen(
                 Text(place.coordinates.display(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("Tap a scooter to send this place", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { destination = null }) { Text("Choose a different place") }
-                    TextButton(onClick = { favoriteDraftPlace = place; favoriteDraftId = null; favoriteLabel = place.label }) { Text("Save favorite") }
+                    TextButton(onClick = clearPlace) { Text("Choose a different place") }
+                    TextButton(onClick = {
+                        val existing = state.personalPlaces.value?.let { it.favorites + it.recent }?.firstOrNull {
+                            it.id == destinationSavedId || it.place.coordinates == place.coordinates
+                        }
+                        openFavoriteEditor(existing?.id, place, place.label)
+                    }) { Text(if (destinationSavedId == null) "Save favorite" else "Edit saved place") }
                 }
             } }
             if (state.configuration.isReady) {
@@ -108,7 +149,7 @@ fun NavigationScreen(
                 state.scooters.loading && state.scooters.value == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
                 state.scooters.error != null && state.scooters.value == null -> RecoveryCard("${state.scooters.error}. Your place is safe.", "Refresh scooters", { model.fetchScooters(true) })
                 state.scooters.value.isNullOrEmpty() -> RecoveryCard("No scooters are available to this account. Check Sunshine access, then refresh.", "Refresh scooters", { model.fetchScooters(true) })
-                else -> ScooterPicker(state.configuration, state.scooters.value.orEmpty(), !state.sending && !uncertainNeedsCheck,
+                else -> ScooterPicker(state.scooters.value.orEmpty(), !state.sending && (state.uncertainTarget == null || state.uncertainCheckedDestination != null) && !state.pendingCommandLoading && !state.pendingCommandForOtherAccount, state.defaultScooterId,
                     onSelect = { scooter ->
                         model.selectScooter(scooter)
                         val captured = state.configuration.copy(scooterId = scooter.id, scooterName = scooter.name)
@@ -118,33 +159,22 @@ fun NavigationScreen(
             }
             if (state.sending) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Sending to ${sendingTarget?.configuration?.scooterName.orEmpty()}…") }
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            when (val outcome = state.lastCommandOutcome?.takeIf { result ->
+            when (state.lastCommandOutcome?.takeIf { result ->
                 val target = when (result) {
                     is CommandOutcome.ServerAccepted -> result.target
                     is CommandOutcome.DeliveryUncertain -> result.target
                 }
                 target.configuration == state.configuration && target.place == place
             }) {
-                is CommandOutcome.ServerAccepted -> ResultCard("Request accepted", "Sunshine accepted this destination. Scooter receipt is not confirmed.", onDone)
-                is CommandOutcome.DeliveryUncertain -> Card { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Check destination before retrying", style = MaterialTheme.typography.titleMedium)
-                    Text("${outcome.target.configuration.scooterName} may have received this destination. A successful server response is not scooter confirmation.")
-                    if (!uncertainNeedsCheck) Text("Latest destination: ${state.destination.value?.place?.label ?: "No active destination"}")
-                    TextButton(onClick = {
-                        val scooter = state.scooters.value.orEmpty().firstOrNull { it.id == outcome.target.configuration.scooterId }
-                        if (scooter != null && outcome.target.configuration.accountKey == state.configuration.accountKey) {
-                            model.selectScooter(scooter)
-                            uncertainCheckStartedAt = System.currentTimeMillis()
-                            model.refresh()
-                        }
-                    }, enabled = !state.sending && !state.destination.loading && outcome.target.configuration.accountKey == state.configuration.accountKey) { Text(if (uncertainNeedsCheck) "Check current destination" else "Check again") }
-                    TextButton(onClick = onDone) { Text("Done") }
-                } }
+                is CommandOutcome.ServerAccepted -> ResultCard("Request accepted", "Sunshine accepted this destination. Scooter receipt is not confirmed.") { clearPlace(); onDone() }
+                is CommandOutcome.DeliveryUncertain -> Unit
                 else -> Unit
             }
         }
     } else {
         Column(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            UncertainRecovery(state, model)
+            if (state.pendingCommandLoading) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Restoring previous request status…") }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column { Text("Navigate", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold); Text("A place for your scooter") }
                 Row {
@@ -168,7 +198,7 @@ fun NavigationScreen(
                     modifier = Modifier.fillMaxWidth(), enabled = !state.sending, singleLine = true)
                 if (state.searching) LinearProgressIndicator(Modifier.fillMaxWidth())
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                state.results.forEach { place -> PlaceRow(place.label, place.coordinates.display(), onClick = { destination = place; if (!sharedText.isNullOrBlank()) onShareConsumed() }) }
+                state.results.forEach { place -> PlaceRow(place.label, place.coordinates.display(), onClick = { openPlace(place, null); if (!sharedText.isNullOrBlank()) onShareConsumed() }) }
 
                 val personal = state.personalPlaces
                 if (personal.loading && personal.value == null) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -178,19 +208,34 @@ fun NavigationScreen(
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text("Your favorites", style = MaterialTheme.typography.titleLarge)
                         }
-                        saved.favorites.forEach { row -> LibraryRow(row, "Favorite", { destination = row.place }, { favoriteDraftPlace = row.place; favoriteDraftId = row.id; favoriteLabel = row.place.label }) }
+                        saved.favorites.forEach { row -> LibraryRow(row, "Favorite", { openPlace(row.place, row.id) }, { openFavoriteEditor(row.id, row.place, row.place.label) }) }
                     }
                     if (saved.recent.isNotEmpty()) {
                         Text("Recent places", style = MaterialTheme.typography.titleLarge)
-                        saved.recent.forEach { row -> LibraryRow(row, "Recent", { destination = row.place }, null) }
+                        saved.recent.forEach { row -> LibraryRow(row, "Recent", { openPlace(row.place, row.id) }, null) }
                     }
                     if (saved.favorites.isEmpty() && saved.recent.isEmpty()) Text("Places you save and use will appear here.")
                 }
+                if (state.scooters.value.orEmpty().isNotEmpty()) {
+                    if (state.defaultScooterId != null && state.configuration.scooterId == state.defaultScooterId) {
+                        TextButton(onClick = { showBrowseVehicles = !showBrowseVehicles }) { Text(if (showBrowseVehicles) "Hide other scooters" else "Browse another scooter") }
+                    }
+                    if (showBrowseVehicles || state.defaultScooterId == null || state.configuration.scooterId != state.defaultScooterId) {
+                        Text("Browse scooter places · read-only", style = MaterialTheme.typography.titleLarge)
+                        Text("Browsing does not change your default or send a navigation request.", style = MaterialTheme.typography.bodySmall)
+                        state.scooters.value.orEmpty().forEach { scooter ->
+                            OutlinedButton(onClick = { model.selectScooter(scooter); showBrowseVehicles = false }, modifier = Modifier.fillMaxWidth(), enabled = !state.sending && state.configuration.scooterId != scooter.id) {
+                                Text("View ${scooter.name}'s places${if (scooter.id == state.defaultScooterId) " · default" else ""}")
+                            }
+                        }
+                    }
+                }
                 if (state.configuration.isReady) {
                     Text("${state.configuration.scooterName}'s places", style = MaterialTheme.typography.titleLarge)
+                    if (state.defaultScooterId != state.configuration.scooterId) Text("Browsing only · your default is unchanged", style = MaterialTheme.typography.bodySmall)
                     val locations = state.savedLocations
                     ResourceFeedback(locations.error, locations.value != null, { model.refresh() })
-                    locations.value.orEmpty().forEach { place -> PlaceRow(place.label, place.coordinates.display(), { destination = place }) }
+                    locations.value.orEmpty().forEach { place -> PlaceRow(place.label, place.coordinates.display(), { openPlace(place, null) }) }
                     val current = state.destination.value?.place
                     Text("Current destination", style = MaterialTheme.typography.titleLarge)
                     if (state.destination.loading && state.destination.value == null) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -198,32 +243,47 @@ fun NavigationScreen(
                     if (current == null) Text("No active destination") else Card { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(current.label, style = MaterialTheme.typography.titleMedium)
                         Text(current.coordinates.display(), style = MaterialTheme.typography.bodySmall)
-                        OutlinedButton(onClick = { clearWarning = true }, enabled = !state.sending) { Text("Cancel navigation") }
+                        OutlinedButton(onClick = { clearWarning = true }, enabled = !state.sending && state.uncertainTarget == null && !state.pendingCommandForOtherAccount) { Text("Cancel navigation") }
                     } }
                 }
             }
         }
     }
 
-    favoriteDraftPlace?.let { place ->
-        AlertDialog(onDismissRequest = { favoriteDraftPlace = null }, title = { Text(if (favoriteDraftId == null) "Save favorite" else "Edit favorite") },
+    visibleFavoriteDraft?.let { place ->
+        AlertDialog(onDismissRequest = { if (!state.favoriteEditor.saving) favoriteDraftPlace = null }, title = { Text(if (favoriteDraftId == null) "Save favorite" else "Edit saved place") },
             text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(favoriteLabel, { favoriteLabel = it }, label = { Text("Name") }, singleLine = true)
+                OutlinedTextField(favoriteLabel, { favoriteLabel = it }, label = { Text("Name") }, singleLine = true, enabled = !state.favoriteEditor.saving)
                 Text(place.coordinates.display(), style = MaterialTheme.typography.bodySmall)
-                if (favoriteDraftId != null) TextButton(onClick = {
-                    val saved = state.personalPlaces.value?.favorites?.firstOrNull { it.id == favoriteDraftId }
-                    if (saved != null) model.setFavorite(saved, false)
-                    favoriteDraftPlace = null
-                }) { Text("Remove favorite") }
+                if (favoriteDraftId != null) {
+                    TextButton(onClick = {
+                        val saved = (state.personalPlaces.value?.favorites.orEmpty() + state.personalPlaces.value?.recent.orEmpty()).firstOrNull { it.id == favoriteDraftId }
+                        if (saved != null) { model.editFavorite(saved.id, FavoriteDraft(favoriteLabel.trim(), place)); model.setFavorite(saved, !favoriteDraftIsFavorite) }
+                    }, enabled = !state.favoriteEditor.saving) { Text(if (favoriteDraftIsFavorite) "Remove from favorites" else "Add to favorites") }
+                    TextButton(onClick = {
+                        val saved = (state.personalPlaces.value?.favorites.orEmpty() + state.personalPlaces.value?.recent.orEmpty()).firstOrNull { it.id == favoriteDraftId }
+                        if (saved != null) deleteFavoritePending = saved
+                    }, enabled = !state.favoriteEditor.saving) { Text("Delete saved place") }
+                }
                 state.favoriteEditor.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                if (state.configuration.favoritePermission == PermissionCapability.UpgradeRequired) TextButton(onClick = onSettings) { Text("Reconnect to enable favorite editing") }
+                if (state.configuration.favoritePermission == PermissionCapability.UpgradeRequired) TextButton(onClick = onSettings, enabled = !state.favoriteEditor.saving) { Text("Reconnect to enable saved-place changes") }
             } },
             confirmButton = { TextButton(onClick = {
                 model.editFavorite(favoriteDraftId, FavoriteDraft(favoriteLabel.trim(), place))
                 model.saveFavorite()
-                favoriteSaveStarted = true
             }, enabled = favoriteLabel.isNotBlank() && !state.favoriteEditor.saving) { Text("Save") } },
-            dismissButton = { TextButton(onClick = { favoriteDraftPlace = null }) { Text("Cancel") } })
+            dismissButton = { TextButton(onClick = { favoriteDraftPlace = null; model.editFavorite(null, null) }, enabled = !state.favoriteEditor.saving) { Text("Cancel") } })
+    }
+    deleteFavoritePending?.let { saved ->
+        AlertDialog(onDismissRequest = { if (!state.favoriteEditor.saving) deleteFavoritePending = null },
+            title = { Text("Delete saved place?") },
+            text = { Text("${saved.place.label} will be permanently removed from your personal places.") },
+            confirmButton = { TextButton(onClick = {
+                model.editFavorite(saved.id, FavoriteDraft(favoriteLabel, saved.place))
+                model.deleteFavorite(saved)
+                deleteFavoritePending = null
+            }, enabled = !state.favoriteEditor.saving) { Text("Delete permanently") } },
+            dismissButton = { TextButton(onClick = { deleteFavoritePending = null }, enabled = !state.favoriteEditor.saving) { Text("Keep place") } })
     }
     if (clearWarning) AlertDialog(onDismissRequest = { clearWarning = false }, title = { Text("Cancel navigation?") },
         text = { Text("This clears the current destination for ${state.configuration.scooterName}. It does not lock the scooter.") },
