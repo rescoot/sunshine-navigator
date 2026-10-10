@@ -145,6 +145,7 @@ fun NavigationScreen(
                 Text(place.label, style = MaterialTheme.typography.titleLarge)
                 Text(place.coordinates.display(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("Tap a scooter to send this place", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                if (state.incomingResolutionRequired) Text("Resolving the newest shared place. Sending is paused until it is ready.", style = MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = clearPlace) { Text("Choose a different place") }
                     TextButton(onClick = {
@@ -169,7 +170,7 @@ fun NavigationScreen(
                 state.scooters.loading && state.scooters.value == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
                 state.scooters.error != null && state.scooters.value == null -> RecoveryCard("${state.scooters.error}. Your place is safe.", "Refresh scooters", { model.fetchScooters(true) })
                 state.scooters.value.isNullOrEmpty() -> RecoveryCard("No scooters are available to this account. Check Sunshine access, then refresh.", "Refresh scooters", { model.fetchScooters(true) })
-                else -> ScooterPicker(state.scooters.value.orEmpty(), !state.sending && (state.uncertainTarget == null || state.uncertainCheckedDestination != null) && !state.pendingCommandLoading && !state.pendingCommandForOtherAccount, state.defaultScooterId,
+                else -> ScooterPicker(state.scooters.value.orEmpty(), !state.sending && !state.incomingResolutionRequired && (state.uncertainTarget == null || state.uncertainCheckedDestination != null) && !state.pendingCommandLoading && !state.pendingCommandForOtherAccount, state.defaultScooterId,
                     onSelect = { scooter ->
                         model.selectScooter(scooter)
                         val captured = state.configuration.copy(scooterId = scooter.id, scooterName = scooter.name)
@@ -203,6 +204,7 @@ fun NavigationScreen(
                     IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Account and settings") }
                 }
             }
+            if (state.incomingResolutionRequired) Text("Resolving the newest shared place…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
             if (!state.configuration.isAuthenticated) {
                 Card { Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Your next stop, simply.", style = MaterialTheme.typography.headlineSmall)
