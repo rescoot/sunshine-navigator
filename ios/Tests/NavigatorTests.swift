@@ -1,5 +1,9 @@
 import XCTest
+#if canImport(NavigatorCore)
+@testable import NavigatorCore
+#else
 @testable import Navigator
+#endif
 
 final class NavigatorTests: XCTestCase {
     func testCoordinateBounds() {

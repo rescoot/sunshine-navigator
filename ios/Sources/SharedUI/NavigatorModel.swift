@@ -52,6 +52,11 @@ import MapKit
             if current?.id != session?.id { reset(current) }
             if let files, let imported = (try await files.locked("import") { try files.read("import.json", as: ImportedPlace.self) }), imported.id != lastImport {
                 lastImport = imported.id; query = imported.text; resolve()
+                if session != nil {
+                    try await files.locked("import") {
+                        if try files.read("import.json", as: ImportedPlace.self)?.id == imported.id { try files.remove("import.json") }
+                    }
+                }
             }
             if session != nil { await refresh() }
         } catch { self.error = error.localizedDescription }
@@ -59,7 +64,7 @@ import MapKit
     func importText(_ text: String) async {
         guard text.utf8.count <= PlaceInput.limit else { error = NavigatorError.invalidInput.localizedDescription; return }
         let imported = ImportedPlace(id: UUID(), text: text)
-        do { if let files { try await files.locked("import") { try files.write("import.json", imported) } } }
+        do { if session == nil, let files { try await files.locked("import") { try files.write("import.json", imported) } } }
         catch { self.error = error.localizedDescription; return }
         lastImport = imported.id; query = text; resolve()
     }
@@ -76,10 +81,12 @@ import MapKit
         let stamp = generation
         loading = true; error = nil
         do {
+            let pending = try await api.pending(session)
+            guard generation == stamp else { return }
+            self.pending = pending
             let scooters = try await api.request([Scooter].self, session: session, path: "scooters")
             guard generation == stamp else { return }
             self.scooters = scooters
-            pending = try await api.pending(session)
             let places = try await api.request(PersonalPlaces.self, session: session, path: "saved_destinations")
             guard generation == stamp else { return }
             self.places = PersonalPlaces(favorites: places.favorites.filter { $0.place.coordinate.isValid }, recent: places.recent.filter { $0.place.coordinate.isValid })
@@ -159,8 +166,12 @@ import MapKit
             if generation == stamp { message = "Sunshine accepted \(place?.label ?? "stop navigation") for \(scooter.name). Check the dashboard for receipt." }
         } catch { if generation == stamp { self.error = error.localizedDescription } }
         if generation == stamp {
-            do { pending = try await api.pending(session) } catch { self.error = error.localizedDescription }
-            busy = false
+            do {
+                let remaining = try await api.pending(session)
+                guard generation == stamp else { return }
+                pending = remaining
+            } catch { if generation == stamp { self.error = error.localizedDescription } }
+            if generation == stamp { busy = false }
         }
     }
     func checkReceipt() async {
@@ -169,7 +180,9 @@ import MapKit
         do {
             let status = try await api.receipt(pending, session: session)
             guard generation == stamp else { return }
-            self.pending = try await api.pending(session)
+            let remaining = try await api.pending(session)
+            guard generation == stamp else { return }
+            self.pending = remaining
             message = status == "accepted" ? "Sunshine accepted the request. Check the dashboard for receipt." : "Request status: \(status)."
             error = nil
         } catch { if generation == stamp { self.error = error.localizedDescription } }

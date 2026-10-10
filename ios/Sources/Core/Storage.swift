@@ -30,9 +30,17 @@ final class SharedFiles: @unchecked Sendable {
         guard FileManager.default.fileExists(atPath: path.path) else { return nil }
         return try JSONDecoder().decode(T.self, from: Data(contentsOf: path))
     }
+    func remove(_ name: String) throws {
+        let path = root.appendingPathComponent(name)
+        if FileManager.default.fileExists(atPath: path.path) { try FileManager.default.removeItem(at: path) }
+    }
     func write<T: Encodable>(_ name: String, _ value: T) throws {
         let data = try JSONEncoder().encode(value)
+        #if os(iOS)
         try data.write(to: root.appendingPathComponent(name), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        #else
+        try data.write(to: root.appendingPathComponent(name), options: .atomic)
+        #endif
     }
 }
 
