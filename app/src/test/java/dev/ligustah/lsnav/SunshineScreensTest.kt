@@ -47,9 +47,9 @@ class SunshineScreensTest(private val scene: String, private val dark: Boolean) 
             Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("Fixture").body(bytes.toResponseBody("image/png".toMediaType())).build()
         }.build()).build()
         val scooters = listOf(
-            ScooterSummary(1, "Bluebird", true, "parked", model = ScooterModelInfo(fullName = "unu · 4 kW"), licensePlate = "B · SC 42", images = ScooterImages(right = "https://art.test/scooters/left_side_3.png")),
-            ScooterSummary(2, "Clementine", false, "hibernating", model = ScooterModelInfo(modelName = "unu · 3 kW"), licensePlate = "HH · 108", lastSeenAt = java.time.Instant.now().minusSeconds(12600).toString(), images = ScooterImages(right = "https://art.test/scooters/left_side_5.png")),
-            ScooterSummary(3, "Cloud with a longer name", true, "stand-by", images = ScooterImages(right = "https://art.test/scooters/left_side_0.png")),
+            ScooterSummary(1, "Bluebird", true, "parked", model = ScooterModelInfo(fullName = "unu · 4 kW"), licensePlate = "176 JLG", licensePlateType = "versicherungskennzeichen", licensePlateSetAt = "2026-03-01T00:00:00+01:00", images = ScooterImages(right = "https://art.test/scooters/left_side_3.png")),
+            ScooterSummary(2, "Clementine", false, "hibernating", model = ScooterModelInfo(modelName = "unu · 3 kW"), licensePlate = "292 LHS", licensePlateType = "versicherungskennzeichen", licensePlateSetAt = "2025-03-01T00:00:00+01:00", lastSeenAt = java.time.Instant.now().minusSeconds(12600).toString(), images = ScooterImages(right = "https://art.test/scooters/left_side_5.png")),
+            ScooterSummary(3, "Cloud with a longer name", true, "stand-by", licensePlate = "B EM 4453 E", licensePlateType = "zulassungskennzeichen", images = ScooterImages(right = "https://art.test/scooters/left_side_0.png")),
             ScooterSummary(4, "Evening ride", null, images = ScooterImages(right = "https://art.test/scooters/left_side_5.png")),
             ScooterSummary(5, "Red", true, "parked", images = ScooterImages(right = "https://art.test/scooters/left_side_3.png")),
             ScooterSummary(6, "Hubert", false, images = ScooterImages(right = "https://art.test/scooters/left_side_0.png")),

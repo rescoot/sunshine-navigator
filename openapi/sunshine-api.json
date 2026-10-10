@@ -170,6 +170,8 @@
               "model": { "$ref": "#/components/schemas/ScooterModel", "nullable": true },
               "capabilities": { "$ref": "#/components/schemas/ScooterCapabilities", "nullable": true },
               "license_plate": { "type": "string", "nullable": true },
+              "license_plate_type": { "type": "string", "nullable": true },
+              "license_plate_set_at": { "type": "string", "format": "date-time", "nullable": true },
               "images": {
                 "type": "object",
                 "nullable": true,

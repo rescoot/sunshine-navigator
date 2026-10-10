@@ -33,7 +33,9 @@ data class ScooterSummary(
     val licensePlate: String? = null,
     val lastSeenAt: String? = null,
     val images: ScooterImages = ScooterImages(),
-    val canNavigate: Boolean? = null
+    val canNavigate: Boolean? = null,
+    val licensePlateType: String? = null,
+    val licensePlateSetAt: String? = null
 ) {
     val availableForNavigation get() = online == true && canNavigate != false
 }

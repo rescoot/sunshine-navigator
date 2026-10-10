@@ -98,7 +98,10 @@ fun ScooterRow(scooter: ScooterSummary, selected: Boolean = false, enabled: Bool
                 Text(scooter.name, Modifier.weight(1f), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 StatusDot(scooter)
             }
-            Text(scooter.vehicleStateLabel(), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(scooter.vehicleStateLabel(), Modifier.weight(1f), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                LicensePlateBadge(scooter)
+            }
         }
         if (dropdown) Icon(Icons.Default.ArrowDropDown, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -136,9 +139,9 @@ fun ScooterTile(scooter: ScooterSummary, isDefault: Boolean, enabled: Boolean, o
     SunshineCard(modifier.scale(scale).alpha(if (dimmed) .6f else 1f).semantics(mergeDescendants = true) { contentDescription = if (selectionMode) "Choose ${scooter.name} as default" else "Send to ${scooter.name}, ${if (scooter.online == true) "online" else "offline"}" }
         .clickable(interactionSource = interaction, indication = LocalIndication.current, enabled = enabled && (selectionMode || scooter.availableForNavigation), role = Role.Button, onClick = onClick), accent = if (accepted) Color(0xFF22C55E) else if (focused || selectionMode && isDefault || sending) Color(0xFF4F46E5) else null) {
         Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(Modifier.fillMaxWidth().heightIn(min = 28.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                scooter.licensePlate?.takeIf(String::isNotBlank)?.let { Text(it.uppercase(), Modifier.background(Color.White, RoundedCornerShape(3.dp)).border(1.dp, Color.Black, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp, vertical = 2.dp), color = Color.Black, fontFamily = FontFamily(android.graphics.Typeface.create("sans-serif-condensed", android.graphics.Typeface.BOLD)), fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1) }
-                Spacer(Modifier.weight(1f))
+            Row(Modifier.fillMaxWidth().heightIn(min = 44.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                if (scooter.licensePlate.isNullOrBlank()) Spacer(Modifier.weight(1f))
+                else LicensePlateBadge(scooter, Modifier.weight(1f))
                 if (isDefault) Text("Default", Modifier.background(Color(0xFF4338CA).copy(alpha = .1f), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 3.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.Medium)
                 StatusDot(scooter)
             }

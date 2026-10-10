@@ -62,8 +62,12 @@ class AccountApiTest {
 
     @Test fun serverPermissionsControlEligibility() = runBlocking {
         MockWebServer().use { server ->
-            server.enqueue(MockResponse().setBody("""[{"id":7,"name":"Read only","online":true,"capabilities":{"navigate":false}}]"""))
-            assertFalse(repository(server).scooters(config).single().availableForNavigation)
+            server.enqueue(MockResponse().setBody("""[{"id":7,"name":"Read only","online":true,"capabilities":{"navigate":false},"license_plate":"176 JLG","license_plate_type":"versicherungskennzeichen","license_plate_set_at":"2026-03-01T00:00:00+01:00"}]"""))
+            val scooter = repository(server).scooters(config).single()
+            assertFalse(scooter.availableForNavigation)
+            assertEquals("versicherungskennzeichen", scooter.licensePlateType)
+            assertEquals("2026-03-01T00:00+01:00", scooter.licensePlateSetAt)
+            assertEquals("176", scooter.plateLayout()!!.top)
         }
     }
 

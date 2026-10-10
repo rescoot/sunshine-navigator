@@ -71,7 +71,8 @@ class NavigationRepository(
                     modelName = metadata.modelName, enginePowerRatingW = metadata.enginePowerRatingW,
                     speedClassKmh = metadata.speedClassKmh, constructionYear = metadata.constructionYear,
                     color = metadata.color, fullName = metadata.fullName
-                ) }, licensePlate = scooter.licensePlate, lastSeenAt = scooter.lastSeenAt?.toString(),
+                ) }, licensePlate = scooter.licensePlate, licensePlateType = scooter.licensePlateType,
+                licensePlateSetAt = scooter.licensePlateSetAt?.toString(), lastSeenAt = scooter.lastSeenAt?.toString(),
                 images = scooter.images?.let { ScooterImages(it.front, it.left, it.right) } ?: ScooterImages(),
                 canNavigate = scooter.capabilities?.navigate
             ) }
