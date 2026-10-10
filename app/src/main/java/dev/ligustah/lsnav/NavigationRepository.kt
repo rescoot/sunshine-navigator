@@ -240,5 +240,5 @@ fun userMessage(error: Exception): String = when (error) {
     is ServerException -> "The server is unavailable. Please retry later."
     is IllegalArgumentException -> error.message ?: "Check the input and retry."
     is IOException -> "Unable to connect or resolve this location. Check the network and retry."
-    else -> "The request failed. Please retry."
+    else -> "Couldn't complete that. Please try again."
 }

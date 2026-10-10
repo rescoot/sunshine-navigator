@@ -98,7 +98,7 @@ class SettingsActivity : ComponentActivity() {
                 val destination = if (onboarding) Screen.Settings else screen
                 BackHandler(enabled = destination == Screen.Settings && !onboarding) { screen = Screen.Navigation }
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+                    Box(Modifier.fillMaxSize()) {
                         when (destination) {
                             Screen.Navigation -> saveableStateHolder.SaveableStateProvider(Screen.Navigation.name) {
                                 NavigationScreen(
