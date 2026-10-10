@@ -139,9 +139,11 @@ fun NavigationScreen(
             } }
             if (state.configuration.isReady) {
                 state.destination.value?.place?.let { current ->
-                    Text("Current route for ${state.configuration.scooterName}: ${current.label}. Sending a place to that scooter replaces its current destination.",
+                    Text("Current route for ${state.configuration.scooterName}: ${current.label}.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                Text("Sending replaces any current destination on the scooter you tap.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             when {
                 !state.configuration.isAuthenticated -> RecoveryCard("Connect Sunshine to choose a scooter. This place will stay here.", "Connect Sunshine", onSettings)
@@ -236,15 +238,23 @@ fun NavigationScreen(
                     val locations = state.savedLocations
                     ResourceFeedback(locations.error, locations.value != null, { model.refresh() })
                     locations.value.orEmpty().forEach { place -> PlaceRow(place.label, place.coordinates.display(), { openPlace(place, null) }) }
-                    val current = state.destination.value?.place
+                    val destinationData = state.destination
+                    val current = destinationData.value?.place
                     Text("Current destination", style = MaterialTheme.typography.titleLarge)
-                    if (state.destination.loading && state.destination.value == null) LinearProgressIndicator(Modifier.fillMaxWidth())
-                    ResourceFeedback(state.destination.error, state.destination.value != null, { model.refresh() })
-                    if (current == null) Text("No active destination") else Card { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(current.label, style = MaterialTheme.typography.titleMedium)
-                        Text(current.coordinates.display(), style = MaterialTheme.typography.bodySmall)
-                        OutlinedButton(onClick = { clearWarning = true }, enabled = !state.sending && state.uncertainTarget == null && !state.pendingCommandForOtherAccount) { Text("Cancel navigation") }
-                    } }
+                    if (destinationData.loading && destinationData.value == null) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    ResourceFeedback(destinationData.error, destinationData.value != null, { model.refresh() })
+                    when {
+                        destinationData.value == null && destinationData.error != null -> Text("Current destination could not be checked.")
+                        destinationData.value == null && destinationData.loading -> Text("Checking current destination…")
+                        destinationData.value == null -> Text("Current destination has not been checked yet.")
+                        current == null && (destinationData.loading || destinationData.error != null) -> Text("Last successful check found no active destination.")
+                        current == null -> Text("No active destination")
+                        else -> Card { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(current.label, style = MaterialTheme.typography.titleMedium)
+                            Text(current.coordinates.display(), style = MaterialTheme.typography.bodySmall)
+                            OutlinedButton(onClick = { clearWarning = true }, enabled = !state.sending && state.uncertainTarget == null && !state.pendingCommandForOtherAccount) { Text("Cancel navigation") }
+                        } }
+                    }
                 }
             }
         }
