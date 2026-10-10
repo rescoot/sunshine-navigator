@@ -81,6 +81,43 @@ class ViewModelTest {
         }
     }
 
+    @Test fun `destination and vehicle places gain labels without issuing commands`() = runTest(dispatcher) {
+        val point = PlaceResult(Coordinates(52.5, 13.3), "52.5,13.3")
+        val gateway = FakeGateway()
+        gateway.firstRead.complete(NavigationTarget(point))
+        gateway.locations[1L] = CompletableDeferred(listOf(point))
+        val labels = CoordinateResolver(object : LocationLookup {
+            override suspend fun search(query: String) = emptyList<PlaceResult>()
+            override suspend fun reverse(coordinates: Coordinates) = "Messedamm 26, Berlin"
+        })
+        val model = NavigationViewModel(application, SavedStateHandle(), gateway, labels, MutableStateFlow(config), MemoryPending())
+        runCurrent()
+        val expected = point.copy(label = "Messedamm 26, Berlin")
+        assertEquals(expected, model.state.value.destination.value?.place)
+        assertEquals(listOf(expected), model.state.value.savedLocations.value)
+        assertEquals(0, gateway.writes)
+        assertEquals(0, gateway.clears)
+    }
+
+    @Test fun `late reverse lookup cannot restore a destination after account switch`() = runTest(dispatcher) {
+        val gateway = FakeGateway()
+        gateway.firstRead.complete(NavigationTarget(PlaceResult(Coordinates(52.5, 13.3), "52.5,13.3")))
+        val configurations = MutableStateFlow(config)
+        val address = CompletableDeferred<String>()
+        val labels = CoordinateResolver(object : LocationLookup {
+            override suspend fun search(query: String) = emptyList<PlaceResult>()
+            override suspend fun reverse(coordinates: Coordinates) = kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { address.await() }
+        })
+        val model = NavigationViewModel(application, SavedStateHandle(), gateway, labels, configurations, MemoryPending())
+        runCurrent()
+        configurations.value = config.copy(token = "another-account")
+        runCurrent()
+        address.complete("Messedamm 26, Berlin")
+        runCurrent()
+        assertNull(model.state.value.destination.value?.place)
+        assertEquals(0, gateway.writes)
+    }
+
     @Test fun `navigation serializes writes and ignores cancelled initial reads`() = runTest(dispatcher) {
         val gateway = FakeGateway()
         val model = model(gateway)

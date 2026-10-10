@@ -13,6 +13,57 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class CoordinateResolverTest {
+    @Test fun `coordinate input receives a cached address without moving the pin`() = runBlocking {
+        var lookups = 0
+        val point = Coordinates(52.500218, 13.270753)
+        val resolver = CoordinateResolver(object : LocationLookup {
+            override suspend fun search(query: String): List<PlaceResult> = error("Forward search must not move an exact pin")
+            override suspend fun reverse(coordinates: Coordinates): String {
+                assertEquals(point, coordinates)
+                lookups++
+                return "Messedamm 26, Berlin"
+            }
+        })
+        val expected = PlaceResult(point, "Messedamm 26, Berlin")
+        assertEquals(expected, resolver.resolve("geo:52.500218,13.270753").single())
+        assertEquals(expected, resolver.resolve("52.500218,13.270753").single())
+        assertEquals(1, lookups)
+        assertEquals("My meeting", resolver.label(PlaceResult(point, "My meeting")).label)
+        assertEquals(1, lookups)
+    }
+
+    @Test fun `missing reverse results and failures preserve the selected point`() = runBlocking {
+        val point = PlaceResult(Coordinates(52.5, 13.3), "52.5,13.3")
+        for (failure in listOf(false, true)) {
+            val resolver = CoordinateResolver(object : LocationLookup {
+                override suspend fun search(query: String) = emptyList<PlaceResult>()
+                override suspend fun reverse(coordinates: Coordinates): String? {
+                    if (failure) throw java.io.IOException("Unavailable")
+                    return null
+                }
+            })
+            assertEquals(point, resolver.label(point))
+        }
+    }
+
+    @Test fun `reverse lookup timeout falls back and cancellation propagates`() = kotlinx.coroutines.test.runTest {
+        val point = PlaceResult(Coordinates(52.5, 13.3), "52.5,13.3")
+        val resolver = CoordinateResolver(object : LocationLookup {
+            override suspend fun search(query: String) = emptyList<PlaceResult>()
+            override suspend fun reverse(coordinates: Coordinates): String? = kotlinx.coroutines.awaitCancellation()
+        })
+        assertEquals(point, resolver.label(point))
+        assertNull(kotlinx.coroutines.withTimeoutOrNull(50) { resolver.label(point) })
+    }
+
+    @Test fun `named geo destinations never invoke reverse lookup`() = runBlocking {
+        val resolver = CoordinateResolver(object : LocationLookup {
+            override suspend fun search(query: String): List<PlaceResult> = error("Unexpected forward search")
+            override suspend fun reverse(coordinates: Coordinates): String? = error("Unexpected reverse lookup")
+        })
+        assertEquals("CityCube Berlin", resolver.resolve("geo:52.5,13.3?q=CityCube%20Berlin").single().label)
+    }
+
     @Test fun `plain address reaches the lookup unchanged`() = runBlocking {
         var actual: String? = null
         val result = PlaceResult(Coordinates(52.52, 13.41), "Berlin")

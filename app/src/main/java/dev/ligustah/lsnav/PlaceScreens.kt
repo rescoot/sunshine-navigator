@@ -172,7 +172,7 @@ fun SendScreen(state: NavigationState, place: PlaceResult?, shared: Boolean = fa
                 else -> ScooterPicker(state.scooters.value, enabled, state.defaultScooterId, onSend, sendingId = sendingTarget?.configuration?.scooterId?.takeIf { state.sending }, acceptedId = acceptedTarget?.configuration?.scooterId,
                     replacement = state.destination.value?.place?.let { current ->
                         state.configuration.scooterId?.takeIf { it != acceptedTarget?.configuration?.scooterId }?.let { id ->
-                            id to if (place != null && current.coordinates.metersTo(place.coordinates) < 30) "Already navigating here" else "Replaces ${current.displayTitle()}"
+                            id to "Current: ${current.displayTitle()}"
                         }
                     },
                     onCardBounds = { id, bounds -> if (id == focusedId) focusedBounds = bounds })

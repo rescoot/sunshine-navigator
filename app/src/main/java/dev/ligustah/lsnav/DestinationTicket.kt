@@ -27,8 +27,8 @@ import kotlin.math.*
 
 val LocalArtworkLoader = staticCompositionLocalOf<ImageLoader?> { null }
 
-internal fun PlaceResult.displayTitle() = label.substringBefore(", ")
-internal fun PlaceResult.displayDetail() = if (label.contains(", ")) label.substringAfter(", ") else coordinates.display()
+internal fun PlaceResult.displayTitle() = if (needsLabel()) "Pinned location" else label.substringBefore(", ")
+internal fun PlaceResult.displayDetail() = if (!needsLabel() && label.contains(", ")) label.substringAfter(", ") else coordinates.display()
 
 internal data class MapTile(val x: Int, val y: Int, val offsetX: Double, val offsetY: Double)
 internal fun mapTiles(coordinates: Coordinates): List<MapTile> {
@@ -85,8 +85,8 @@ fun DestinationTicket(place: PlaceResult?, shared: Boolean = false, loading: Boo
             if (loading) { Skeleton(Modifier.fillMaxWidth(.65f).height(22.dp)); Text("Finding this place…", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             else if (place != null) {
                 Text(place.displayTitle(), fontSize = 19.sp, fontWeight = FontWeight.Bold)
-                if (place.label.contains(", ")) Text(place.displayDetail(), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
-                Text(place.coordinates.display(), fontSize = 12.sp, style = TextStyle(fontFeatureSettings = "tnum"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (!place.needsLabel() && place.label.contains(", ")) Text(place.displayDetail(), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                if (place.needsLabel()) Text(place.coordinates.display(), fontSize = 12.sp, style = TextStyle(fontFeatureSettings = "tnum"), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     if (shared) SunshineBadge("Shared place")
                     Spacer(Modifier.weight(1f))

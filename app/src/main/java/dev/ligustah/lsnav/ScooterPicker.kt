@@ -32,8 +32,8 @@ fun ScooterPicker(scooters: List<ScooterSummary>, enabled: Boolean, defaultScoot
         val columns = if (maxWidth >= 320.dp && LocalDensity.current.fontScale < 1.3f) 2 else 1
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             scooters.sortedBy { if (it.id == defaultScooterId) 0 else 1 }.chunked(columns).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    row.forEach { scooter -> key(scooter.id) { AppearingItem(scooters.indexOf(scooter), Modifier.weight(1f)) { ScooterTile(scooter, scooter.id == defaultScooterId, enabled, { onSelect(scooter) }, Modifier.fillMaxWidth().onGloballyPositioned { onCardBounds(scooter.id, it.boundsInRoot()) }, selectionMode, sendingId == scooter.id, acceptedId == scooter.id, replacement?.takeIf { it.first == scooter.id }?.second, sendingId != null && sendingId != scooter.id) } } }
+                Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    row.forEach { scooter -> key(scooter.id) { AppearingItem(scooters.indexOf(scooter), Modifier.weight(1f).fillMaxHeight()) { ScooterTile(scooter, scooter.id == defaultScooterId, enabled, { onSelect(scooter) }, Modifier.fillMaxSize().onGloballyPositioned { onCardBounds(scooter.id, it.boundsInRoot()) }, selectionMode, sendingId == scooter.id, acceptedId == scooter.id, replacement?.takeIf { it.first == scooter.id }?.second, sendingId != null && sendingId != scooter.id) } } }
                     repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
@@ -82,25 +82,37 @@ fun ScooterTile(scooter: ScooterSummary, isDefault: Boolean, enabled: Boolean, o
     SunshineCard(modifier.scale(scale).alpha(if (dimmed) .6f else 1f).semantics(mergeDescendants = true) { contentDescription = if (selectionMode) "Choose ${scooter.name} as default" else "Send to ${scooter.name}, ${if (scooter.online == true) "online" else "offline"}" }
         .clickable(interactionSource = interaction, indication = LocalIndication.current, enabled = enabled && (selectionMode || scooter.online == true), role = Role.Button, onClick = onClick), accent = if (accepted) Color(0xFF22C55E) else if (focused || selectionMode && isDefault || sending) Color(0xFF4F46E5) else null) {
         Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 28.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 scooter.licensePlate?.takeIf(String::isNotBlank)?.let { Text(it.uppercase(), Modifier.background(Color.White, RoundedCornerShape(3.dp)).border(1.dp, Color.Black, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp, vertical = 2.dp), color = Color.Black, fontFamily = FontFamily(android.graphics.Typeface.create("sans-serif-condensed", android.graphics.Typeface.BOLD)), fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1) }
                 Spacer(Modifier.weight(1f))
                 if (isDefault) Text("Default", Modifier.background(Color(0xFF4338CA).copy(alpha = .1f), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 3.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.Medium)
                 StatusDot(scooter)
             }
-            ScooterArt(scooter, Modifier.fillMaxWidth().height(if (selectionMode) 100.dp else 112.dp))
-            Text(scooter.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-            scooter.model?.summary?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            scooter.state?.let { SunshineBadge(when { it.startsWith("hibernat") -> "Hibernating"; it == "ready-to-drive" -> "Ready"; it == "stand-by" -> "Stand-by"; else -> it.replace('-', ' ').replaceFirstChar(Char::uppercase) }, if (it == "parked" || it == "ready-to-drive") BadgeTone.Success else BadgeTone.Info) }
-            if (scooter.online != true) {
-                SunshineBadge(if (scooter.online == null) "Status unknown" else lastSeenLabel(scooter.lastSeenAt), BadgeTone.Neutral)
+            ScooterArt(scooter, Modifier.fillMaxWidth().height(96.dp))
+            Text(scooter.name, Modifier.heightIn(min = with(LocalDensity.current) { 46.sp.toDp() }), fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            val status = when {
+                sending -> "Sending…"
+                accepted -> "Sent"
+                scooter.online == null -> "Status unknown"
+                scooter.online == false -> "Offline"
+                scooter.state?.startsWith("hibernat") == true -> "Hibernating"
+                scooter.state == "ready-to-drive" -> "Ready"
+                scooter.state == "stand-by" -> "Stand-by"
+                else -> scooter.state?.replace('-', ' ')?.replaceFirstChar(Char::uppercase) ?: "Online"
             }
+            Row(Modifier.heightIn(min = 24.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (accepted) Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF22C55E), modifier = Modifier.size(18.dp))
+                Text(status, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = if (scooter.online == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (scooter.online != true && !selectionMode) Text("Can't send while offline", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            replaces?.let { Text(it, fontSize = 12.sp, color = if (MaterialTheme.colorScheme.background == Color(0xFF0F0E1F)) Color(0xFFFDE047) else Color(0xFFA16207), maxLines = 1, overflow = TextOverflow.Ellipsis) }
-            if (sending) Text("Sending…", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
-            if (accepted) Icon(Icons.Default.CheckCircle, "Sent", tint = Color(0xFF22C55E), modifier = Modifier.size(22.dp))
+            val detail = when {
+                accepted -> "Sunshine accepted the place"
+                sending -> "Waiting for Sunshine"
+                scooter.online != true && !selectionMode -> "Unavailable for sending"
+                replaces != null -> replaces
+                selectionMode && isDefault -> "Preferred scooter"
+                else -> ""
+            }
+            Text(detail, Modifier.heightIn(min = with(LocalDensity.current) { 36.sp.toDp() }), fontSize = 12.sp, lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         if (sending) TurboBar()
     }

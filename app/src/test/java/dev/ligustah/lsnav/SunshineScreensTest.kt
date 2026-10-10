@@ -44,10 +44,12 @@ class SunshineScreensTest(private val scene: String, private val dark: Boolean) 
         val scooters = listOf(
             ScooterSummary(1, "Bluebird", true, "parked", model = ScooterModelInfo(fullName = "unu · 4 kW"), licensePlate = "B · SC 42", images = ScooterImages(right = "https://art.test/scooters/left_side_3.png")),
             ScooterSummary(2, "Clementine", false, "hibernating", model = ScooterModelInfo(modelName = "unu · 3 kW"), licensePlate = "HH · 108", lastSeenAt = java.time.Instant.now().minusSeconds(12600).toString(), images = ScooterImages(right = "https://art.test/scooters/left_side_5.png")),
-            ScooterSummary(3, "Cloud", true, "stand-by", model = ScooterModelInfo(modelName = "unu · 2 kW"), images = ScooterImages(right = "https://art.test/scooters/left_side_0.png"))
+            ScooterSummary(3, "Cloud with a longer name", true, "stand-by", images = ScooterImages(right = "https://art.test/scooters/left_side_0.png")),
+            ScooterSummary(4, "Evening ride", null, images = ScooterImages(right = "https://art.test/scooters/left_side_5.png")),
+            ScooterSummary(5, "Red", true, "parked", images = ScooterImages(right = "https://art.test/scooters/left_side_3.png"))
         )
         val config = AppConfiguration(baseUrl = "https://sunshine.example", scooterId = 1, scooterName = "Bluebird", oauthSessionId = "fixture", grantedScopes = setOf("read", "write", "scooter_control"))
-        val place = PlaceResult(Coordinates(52.5145, 13.3501), "Café am Tiergarten")
+        val place = PlaceResult(Coordinates(52.5145, 13.3501), "Café am Tiergarten, Straße des 17. Juni, Berlin")
         val home = PlaceResult(Coordinates(52.529, 13.401), "Home")
         val park = PlaceResult(Coordinates(52.49, 13.41), "Tempelhofer Feld")
         val state = NavigationState(configuration = config, configurationLoaded = true, scooters = RemoteData.loaded(scooters), defaultScooterId = 1, pendingCommandLoading = false,

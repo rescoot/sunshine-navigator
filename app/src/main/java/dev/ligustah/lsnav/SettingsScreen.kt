@@ -201,16 +201,12 @@ private fun ConnectionFields(state: SettingsState, model: SettingsViewModel, rec
 @Composable
 private fun DefaultScooterOptions(scooters: List<ScooterSummary>, selected: Long?, enabled: Boolean, onSelect: (ScooterSummary) -> Unit, onAsk: () -> Unit) {
     val options = scooters + listOf<ScooterSummary?>(null)
-    run {
-        val columns = when {
-            LocalDensity.current.fontScale >= 1.3f -> 1
-            options.size > 4 -> 3
-            else -> 2
-        }
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val columns = if (maxWidth >= 300.dp && LocalDensity.current.fontScale < 1.3f) 2 else 1
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             options.chunked(columns).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    row.forEach { scooter -> PreferenceChip(scooter, scooter?.id == selected, enabled, { if (scooter == null) onAsk() else onSelect(scooter) }, Modifier.weight(1f)) }
+                Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { scooter -> PreferenceChip(scooter, scooter?.id == selected, enabled, { if (scooter == null) onAsk() else onSelect(scooter) }, Modifier.weight(1f).fillMaxHeight()) }
                     repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
@@ -224,7 +220,7 @@ private fun PreferenceChip(scooter: ScooterSummary?, selected: Boolean, enabled:
         Column(Modifier.fillMaxWidth().padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (scooter != null) ScooterArt(scooter, Modifier.fillMaxWidth().height(48.dp))
             else Box(Modifier.height(48.dp), contentAlignment = Alignment.Center) { Icon(Icons.Default.GridView, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary) }
-            Text(scooter?.name ?: "Ask every time", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Text(scooter?.name ?: "Ask every time", Modifier.heightIn(min = with(LocalDensity.current) { 44.sp.toDp() }), fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
     }
 }

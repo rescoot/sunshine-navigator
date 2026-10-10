@@ -9,6 +9,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.OkHttpClient
@@ -22,9 +28,35 @@ import kotlin.coroutines.resumeWithException
 
 fun interface LocationLookup {
     suspend fun search(query: String): List<PlaceResult>
+    suspend fun reverse(coordinates: Coordinates): String? = null
 }
 
 class AndroidLocationLookup(private val context: Context) : LocationLookup {
+    override suspend fun reverse(coordinates: Coordinates): String? {
+        if (!Geocoder.isPresent()) return null
+        val geocoder = Geocoder(context, Locale.getDefault())
+        val addresses = if (Build.VERSION.SDK_INT >= 33) {
+            suspendCancellableCoroutine<List<Address>> { continuation ->
+                geocoder.getFromLocation(coordinates.latitude, coordinates.longitude, 1, object : Geocoder.GeocodeListener {
+                    override fun onGeocode(addresses: MutableList<Address>) {
+                        if (continuation.isActive) continuation.resume(addresses)
+                    }
+                    override fun onError(errorMessage: String?) {
+                        if (continuation.isActive) continuation.resume(emptyList())
+                    }
+                })
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            withContext(Dispatchers.IO) { geocoder.getFromLocation(coordinates.latitude, coordinates.longitude, 1) ?: emptyList() }
+        }
+        return addresses.firstOrNull()?.let { address ->
+            (0..address.maxAddressLineIndex).mapNotNull(address::getAddressLine).joinToString(", ")
+                .ifBlank { listOfNotNull(address.featureName, address.locality).distinct().joinToString(", ") }
+                .takeIf(String::isNotBlank)
+        }
+    }
+
     override suspend fun search(query: String): List<PlaceResult> {
         if (!Geocoder.isPresent()) throw IOException("Address search is unavailable on this device")
         val geocoder = Geocoder(context, Locale.getDefault())
@@ -63,21 +95,48 @@ class CoordinateResolver(
     private val httpClient = client.newBuilder().followRedirects(false).followSslRedirects(false)
         .callTimeout(15, TimeUnit.SECONDS).build()
 
+    private val labels = object : LinkedHashMap<Coordinates, String>(128, .75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Coordinates, String>?) = size > 128
+    }
+    private val reverseSlots = Semaphore(2)
+
+    suspend fun label(place: PlaceResult): PlaceResult {
+        if (!place.needsLabel() || !place.coordinates.isValid()) return place
+        val cached = synchronized(labels) { labels[place.coordinates] }
+        if (cached != null) return place.copy(label = cached)
+        val name = try {
+            withTimeoutOrNull(2_500) {
+                reverseSlots.withPermit {
+                    synchronized(labels) { labels[place.coordinates] } ?: lookup.reverse(place.coordinates)
+                        ?.trim()?.takeIf { it.isNotEmpty() && MapsIntentParser.parsePair(it) == null }
+                        ?.also { synchronized(labels) { labels[place.coordinates] = it } }
+                }
+            }
+        } catch (error: CancellationException) { throw error
+        } catch (_: Exception) { null }
+        // Reverse lookup supplies only a label; the selected point remains exact.
+        return if (name == null) place else place.copy(label = name)
+    }
+
+    suspend fun labelAll(places: List<PlaceResult>): List<PlaceResult> = coroutineScope {
+        places.map { async { label(it) } }.awaitAll()
+    }
+
     suspend fun resolve(text: String): List<PlaceResult> {
         require(text.length <= MapsIntentParser.MAX_INPUT_LENGTH) { "The shared text is too long" }
         val input = MapsIntentParser.extractUrlOrText(text)
-        MapsIntentParser.parsePair(input)?.let { return listOf(PlaceResult(it, input)) }
+        MapsIntentParser.parsePair(input)?.let { return listOf(label(PlaceResult(it, input))) }
         var uri = Uri.parse(input)
         MapsIntentParser.extractCoordinates(uri)?.let { coordinates ->
             val label = MapsIntentParser.extractPlaceName(uri)?.takeIf(String::isNotBlank) ?: coordinates.display()
-            return listOf(PlaceResult(coordinates, label))
+            return listOf(label(PlaceResult(coordinates, label)))
         }
         if (isShortLink(uri)) {
             val expanded = expandShortLink(input)
             uri = Uri.parse(expanded)
             MapsIntentParser.extractCoordinates(uri)?.let { coordinates ->
                 val label = MapsIntentParser.extractPlaceName(uri)?.takeIf(String::isNotBlank) ?: coordinates.display()
-                return listOf(PlaceResult(coordinates, label))
+                return listOf(label(PlaceResult(coordinates, label)))
             }
         }
         val name = MapsIntentParser.extractPlaceName(uri)

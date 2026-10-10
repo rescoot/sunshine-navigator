@@ -17,6 +17,32 @@ class ScooterPickerTest {
     private val online = ScooterSummary(1, "Bluebird", true)
     private val offline = ScooterSummary(2, "Clementine", false)
 
+    @Test fun gridAlignsCardsWithDifferentNamesAndConnectivityWithoutModelNoise() {
+        val first = online.copy(state = "stand-by", model = ScooterModelInfo(modelName = "Unneeded model", enginePowerRatingW = 4000), licensePlate = "176 JLG")
+        val second = offline.copy(name = "A scooter with a longer name", state = "hibernating")
+        compose.setContent { NavigationTheme { ScooterPicker(listOf(first, second), true, 1, {}, replacement = 1L to "Current: Messedamm 26, Berlin") } }
+        compose.waitForIdle()
+        val a = compose.onNodeWithContentDescription("Send to Bluebird, online").fetchSemanticsNode().boundsInRoot
+        val b = compose.onNodeWithContentDescription("Send to A scooter with a longer name, offline").fetchSemanticsNode().boundsInRoot
+        assertEquals(a.top, b.top, 1f)
+        assertEquals(a.bottom, b.bottom, 1f)
+        assertEquals(a.width, b.width, 1f)
+        compose.onNodeWithText("Unneeded model", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("kW", substring = true).assertDoesNotExist()
+        compose.onNodeWithContentDescription("Send to A scooter with a longer name, offline").assertIsNotEnabled()
+    }
+
+    @Test fun preferenceGridUsesTwoColumnsForFiveScootersAndIncludesAskEveryTime() {
+        val fleet = (1L..5L).map { ScooterSummary(it, "Scooter $it", true) }
+        compose.setContent { NavigationTheme { AccountScreen(SettingsState(initialized = true, scooters = RemoteData.loaded(fleet))) } }
+        val a = compose.onNodeWithText("Scooter 1").fetchSemanticsNode().boundsInRoot
+        val b = compose.onNodeWithText("Scooter 2").fetchSemanticsNode().boundsInRoot
+        val c = compose.onNodeWithText("Scooter 3").fetchSemanticsNode().boundsInRoot
+        assertEquals(a.top, b.top, 1f)
+        assertTrue(c.top > a.bottom)
+        compose.onNodeWithText("Ask every time").performScrollTo().assertIsDisplayed()
+    }
+
     @Test fun onlyOnlineExplicitTapSelectsSendTarget() {
         var selections = 0
         compose.setContent { NavigationTheme { ScooterPicker(listOf(online, offline), true, 1, { selections++ }) } }

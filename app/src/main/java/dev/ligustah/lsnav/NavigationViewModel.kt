@@ -253,7 +253,8 @@ class NavigationViewModel @JvmOverloads constructor(
         mutableState.value = mutableState.value.copy(destination = mutableState.value.destination.refreshing())
         destinationJob = viewModelScope.launch {
             try {
-                val value = gateway.destination(config)
+                val destination = gateway.destination(config)
+                val value = destination.copy(place = destination.place?.let { resolver.label(it) })
                 if (generation == destinationGeneration && mutableState.value.configuration == config) mutableState.value = mutableState.value.copy(destination = RemoteData.loaded(value))
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) {
@@ -270,7 +271,7 @@ class NavigationViewModel @JvmOverloads constructor(
         mutableState.value = mutableState.value.copy(savedLocations = mutableState.value.savedLocations.refreshing())
         locationsJob = viewModelScope.launch {
             try {
-                val value = gateway.savedLocations(config)
+                val value = resolver.labelAll(gateway.savedLocations(config))
                 if (generation == locationsGeneration && mutableState.value.configuration == config) mutableState.value = mutableState.value.copy(savedLocations = RemoteData.loaded(value))
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) {
@@ -289,7 +290,10 @@ class NavigationViewModel @JvmOverloads constructor(
         mutableState.value = mutableState.value.copy(personalPlaces = mutableState.value.personalPlaces.refreshing())
         personalPlacesJob = viewModelScope.launch {
             try {
-                val value = gateway.personalPlaces(config, forceRefresh)
+                val places = gateway.personalPlaces(config, forceRefresh)
+                val all = places.favorites + places.recent
+                val labelled = all.zip(resolver.labelAll(all.map { it.place })) { saved, place -> saved.copy(place = place) }
+                val value = PersonalPlaces(labelled.take(places.favorites.size), labelled.drop(places.favorites.size))
                 if (generation == personalGeneration && storedConfiguration?.accountKey == config.accountKey) mutableState.value = mutableState.value.copy(personalPlaces = RemoteData.loaded(value))
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) {
