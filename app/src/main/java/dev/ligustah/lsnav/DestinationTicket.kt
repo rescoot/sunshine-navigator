@@ -25,12 +25,15 @@ import kotlin.math.*
 
 val LocalArtworkLoader = staticCompositionLocalOf<ImageLoader?> { null }
 
+internal fun PlaceResult.displayTitle() = label.substringBefore(", ")
+internal fun PlaceResult.displayDetail() = if (label.contains(", ")) label.substringAfter(", ") else coordinates.display()
+
 internal data class MapTile(val x: Int, val y: Int, val offsetX: Double, val offsetY: Double)
 internal fun mapTiles(coordinates: Coordinates): List<MapTile> {
     val n = 65536.0
     val x = (coordinates.longitude + 180) / 360 * n
     val latitude = coordinates.latitude.coerceIn(-85.05112878, 85.05112878) * PI / 180
-    val y = (1 - ln(tan(latitude) + 1 / cos(latitude)) / PI) / 2 * n
+    val y = ((1 - ln(tan(latitude) + 1 / cos(latitude)) / PI) / 2 * n).coerceIn(0.0, n)
     val firstY = floor(y - .5).toInt().coerceIn(0, 65534)
     return (firstY..firstY + 1).flatMap { ty -> (floor(x).toInt() - 1..floor(x).toInt() + 1).map { tx -> MapTile((tx % 65536 + 65536) % 65536, ty, (tx - x) * 256, (ty - y) * 256) } }
 }
@@ -66,7 +69,8 @@ fun DestinationTicket(place: PlaceResult?, shared: Boolean = false, loading: Boo
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (loading) { Skeleton(Modifier.fillMaxWidth(.65f).height(22.dp)); Text("Finding this place…", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             else if (place != null) {
-                Text(place.label, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                Text(place.displayTitle(), fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                if (place.label.contains(", ")) Text(place.displayDetail(), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
                 Text(place.coordinates.display(), fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (shared) SunshineBadge("Shared place")
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

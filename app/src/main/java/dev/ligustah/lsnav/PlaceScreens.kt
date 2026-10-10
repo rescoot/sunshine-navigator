@@ -16,7 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 
-internal val NavigationState.networkLoading: Boolean get() = searching || sending || scooters.loading || destination.loading || personalPlaces.loading || savedLocations.loading || checkingUncertain || pendingCommandLoading
+internal val NavigationState.networkLoading: Boolean get() = searching || sending || favoriteEditor.saving || scooters.loading || destination.loading || personalPlaces.loading || savedLocations.loading || checkingUncertain || pendingCommandLoading
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -39,7 +39,7 @@ fun HomeScreen(state: NavigationState, query: String = state.query, results: Lis
                         if (scooter != null) Box(Modifier.size(80.dp, 64.dp)) { ScooterArt(scooter, Modifier.fillMaxSize()); StatusDot(scooter, Modifier.align(Alignment.TopEnd)) }
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("NAVIGATING TO", fontSize = 12.sp, letterSpacing = .8.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(when { state.destination.error != null -> "Couldn't check destination"; state.destination.value == null -> "Checking destination…"; state.destination.value.place == null -> "No destination set"; else -> state.destination.value.place.label }, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                            Text(when { state.destination.error != null -> "Couldn't check destination"; state.destination.value == null -> "Checking destination…"; state.destination.value.place == null -> "No destination set"; else -> state.destination.value.place.displayTitle() }, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 if (state.destination.error != null) TextButton(onRefresh) { Text("↻ Retry") }
                                 else if (state.destination.value?.place != null) SunshineButton(onClear, enabled = !state.sending && state.uncertainTarget == null && !state.pendingCommandForOtherAccount && !state.pendingCommandLoading, tone = ButtonTone.Secondary, modifier = Modifier.width(90.dp)) { Text("Clear") }
@@ -65,8 +65,8 @@ fun HomeScreen(state: NavigationState, query: String = state.query, results: Lis
                     SunshineCard(Modifier.width(148.dp).height(96.dp).combinedClickable(onClick = { onOpen(saved.place, saved.id) }, onLongClick = { onEdit(saved) })) {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("★", color = Color(0xFFFBBF24)); Text("⋮", Modifier.clickable { onEdit(saved) }, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                            Text(saved.place.label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
-                            Text(saved.place.coordinates.display(), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                            Text(saved.place.displayTitle(), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
+                            Text(saved.place.displayDetail(), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                         }
                     }
                 }
@@ -93,7 +93,7 @@ fun SectionTitle(text: String) { Text(text.uppercase(), fontSize = 12.sp, fontWe
 fun PlaceListRow(place: PlaceResult, leading: String, onOpen: () -> Unit, trailing: @Composable () -> Unit = { Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant) }) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(leading, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 22.sp)
-        Column(Modifier.weight(1f)) { Text(place.label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold); Text(place.coordinates.display(), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        Column(Modifier.weight(1f)) { Text(place.displayTitle(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold); Text(place.displayDetail(), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         trailing()
     }
 }
@@ -111,11 +111,13 @@ fun SendScreen(state: NavigationState, place: PlaceResult?, shared: Boolean = fa
             if (place == null && results.isNotEmpty()) GroupedPlaces(results, onCandidate, "⌖")
             if (place == null) TextButton(onEdit) { Text("Edit place") }
             recovery()
-            if (showFailure) state.error?.let {
+            if (showFailure && state.uncertainTarget == null && !state.pendingCommandForOtherAccount) state.error?.let {
+                val resolving = place == null
                 val reconnect = state.configuration.needsPermissionUpgrade || it.contains("login", true) || it.contains("token", true) || it.contains("Settings", true)
-                ProblemPanel("Couldn't send this place", it, if (reconnect) "Reconnect" else "Choose another scooter", if (reconnect) onSettings else { { showFailure = false } })
+                ProblemPanel(if (resolving) "Couldn't find this place" else "Couldn't send this place", it, if (resolving) "Edit place" else if (reconnect) "Reconnect" else "Choose another scooter", if (resolving) onEdit else if (reconnect) onSettings else { { showFailure = false } })
             }
             Text("☝  Tap a scooter to send", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text("Sending replaces the scooter's current destination.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             when {
                 !state.configuration.isAuthenticated -> ProblemPanel("Connect Sunshine", "Your place will stay here.", "Connect Sunshine", onSettings, BadgeTone.Indigo)
                 state.configuration.missingOAuthScopes.contains("scooter_control") -> ProblemPanel("Scooter access needed", "Approve scooter navigation access to send a place.", "Reconnect", onSettings, BadgeTone.Warning)

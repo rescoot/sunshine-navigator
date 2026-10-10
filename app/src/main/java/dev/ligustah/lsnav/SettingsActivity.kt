@@ -3,6 +3,8 @@ package dev.ligustah.lsnav
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.viewModels
@@ -11,11 +13,7 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import net.openid.appauth.AuthorizationService
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
@@ -92,14 +90,19 @@ class SettingsActivity : ComponentActivity() {
         setContent {
             val settings by settingsModel.state.collectAsStateWithLifecycle()
             NavigationTheme {
+                androidx.compose.runtime.SideEffect {
+                    androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = !dark && (settings.profile.onboardingComplete || settings.profile.configuration.isAuthenticated)
+                }
                 val saveableStateHolder = rememberSaveableStateHolder()
                 var screen by rememberSaveable { mutableStateOf(Screen.Navigation) }
                 val onboarding = !settings.profile.onboardingComplete
                 val destination = if (onboarding) Screen.Settings else screen
                 BackHandler(enabled = destination == Screen.Settings && !onboarding) { screen = Screen.Navigation }
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    Box(Modifier.fillMaxSize()) {
-                        when (destination) {
+                    AnimatedContent(destination, transitionSpec = {
+                        (slideInVertically(tween(320, easing = SunshineEase)) { it / 12 } + fadeIn(tween(220))) togetherWith fadeOut(tween(220))
+                    }, label = "account") { current ->
+                        when (current) {
                             Screen.Navigation -> saveableStateHolder.SaveableStateProvider(Screen.Navigation.name) {
                                 NavigationScreen(
                                     onSettings = { screen = Screen.Settings },

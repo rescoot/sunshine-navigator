@@ -2,18 +2,11 @@ package dev.ligustah.lsnav
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -59,6 +52,7 @@ fun NavigationScreen(
     var favoriteSaveStartSequence by rememberSaveable { mutableStateOf(state.favoriteMutationSequence) }
     var deleteFavoritePending by remember { mutableStateOf<SavedPlace?>(null) }
     var showBrowseVehicles by rememberSaveable { mutableStateOf(false) }
+    var addingFavorite by rememberSaveable { mutableStateOf(false) }
     var clearWarning by remember { mutableStateOf(false) }
     var sendingTarget by remember { mutableStateOf<CommandTarget?>(null) }
     val ownerFingerprint = state.configuration.accountFingerprint()
@@ -192,7 +186,7 @@ fun NavigationScreen(
             onOpen = { place, id -> openPlace(place, id, currentSharedResults && id == null); if (currentSharedResults && !sharedText.isNullOrBlank()) onShareConsumed() },
             onEdit = { saved -> openFavoriteEditor(saved.id, saved.place, saved.place.label) },
             onStar = { saved -> model.setFavorite(saved, !saved.isFavorite) },
-            onAdd = { val place = visibleResults.firstOrNull(); if (place != null) openFavoriteEditor(null, place, place.label) else queryChanged("") },
+            onAdd = { addingFavorite = true },
             onSettings = onSettings, onRefresh = model::refresh, onClear = { clearWarning = true }, onChange = { showBrowseVehicles = true }, recovery = recovery)
     }
     if (showBrowseVehicles) ModalBottomSheet(onDismissRequest = { showBrowseVehicles = false }) {
@@ -202,6 +196,15 @@ fun NavigationScreen(
             state.scooters.value.orEmpty().forEach { scooter ->
                 TextButton(onClick = { model.selectScooter(scooter); showBrowseVehicles = false }, enabled = !state.sending) { Text(scooter.name) }
             }
+        }
+    }
+    if (addingFavorite) ModalBottomSheet(onDismissRequest = { addingFavorite = false }) {
+        Column(Modifier.fillMaxWidth().imePadding().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Add favourite", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            OutlinedTextField(displayedQuery, queryChanged, placeholder = { Text("Search or paste a map link") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            if (state.searching) TurboBar()
+            if (visibleResults.isNotEmpty()) GroupedPlaces(visibleResults, { place -> addingFavorite = false; openFavoriteEditor(null, place, place.label) }, "⌖")
+            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
     }
     visibleFavoriteDraft?.let { place ->

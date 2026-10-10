@@ -21,13 +21,13 @@ import coil.compose.AsyncImage
 import java.time.*
 
 @Composable
-fun ScooterPicker(scooters: List<ScooterSummary>, enabled: Boolean, defaultScooterId: Long?, onSelect: (ScooterSummary) -> Unit, placeLabel: String = "this place", selectionMode: Boolean = false, sendingId: Long? = null, acceptedId: Long? = null, replacement: Pair<Long, String>? = null) {
+fun ScooterPicker(scooters: List<ScooterSummary>, enabled: Boolean, defaultScooterId: Long?, onSelect: (ScooterSummary) -> Unit, selectionMode: Boolean = false, sendingId: Long? = null, acceptedId: Long? = null, replacement: Pair<Long, String>? = null) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val columns = if (maxWidth >= 320.dp && LocalDensity.current.fontScale < 1.3f) 2 else 1
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             scooters.sortedBy { if (it.id == defaultScooterId) 0 else 1 }.chunked(columns).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    row.forEach { scooter -> key(scooter.id) { AppearingItem(scooters.indexOf(scooter), Modifier.weight(1f)) { ScooterTile(scooter, scooter.id == defaultScooterId, enabled, { onSelect(scooter) }, placeLabel, Modifier.fillMaxWidth(), selectionMode, sendingId == scooter.id, acceptedId == scooter.id, replacement?.takeIf { it.first == scooter.id }?.second, sendingId != null && sendingId != scooter.id) } } }
+                    row.forEach { scooter -> key(scooter.id) { AppearingItem(scooters.indexOf(scooter), Modifier.weight(1f)) { ScooterTile(scooter, scooter.id == defaultScooterId, enabled, { onSelect(scooter) }, Modifier.fillMaxWidth(), selectionMode, sendingId == scooter.id, acceptedId == scooter.id, replacement?.takeIf { it.first == scooter.id }?.second, sendingId != null && sendingId != scooter.id) } } }
                     repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
@@ -67,12 +67,13 @@ internal fun lastSeenLabel(value: String?): String {
 }
 
 @Composable
-fun ScooterTile(scooter: ScooterSummary, isDefault: Boolean, enabled: Boolean, onClick: () -> Unit, placeLabel: String, modifier: Modifier = Modifier, selectionMode: Boolean = false, sending: Boolean = false, accepted: Boolean = false, replaces: String? = null, dimmed: Boolean = false) {
+fun ScooterTile(scooter: ScooterSummary, isDefault: Boolean, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, selectionMode: Boolean = false, sending: Boolean = false, accepted: Boolean = false, replaces: String? = null, dimmed: Boolean = false) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+    val focused by interaction.collectIsFocusedAsState()
     val scale by animateFloatAsState(if (pressed) .97f else 1f, spring(), label = "tile press")
     SunshineCard(modifier.scale(scale).alpha(if (dimmed) .6f else 1f).semantics(mergeDescendants = true) { contentDescription = if (selectionMode) "Choose ${scooter.name} as default" else "Send to ${scooter.name}, ${if (scooter.online == true) "online" else "offline"}" }
-        .clickable(interactionSource = interaction, indication = LocalIndication.current, enabled = enabled && (selectionMode || scooter.online == true), role = Role.Button, onClick = onClick), accent = if (accepted) Color(0xFF22C55E) else if (selectionMode && isDefault || sending) Color(0xFF4F46E5) else null) {
+        .clickable(interactionSource = interaction, indication = LocalIndication.current, enabled = enabled && (selectionMode || scooter.online == true), role = Role.Button, onClick = onClick), accent = if (accepted) Color(0xFF22C55E) else if (focused || selectionMode && isDefault || sending) Color(0xFF4F46E5) else null) {
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 scooter.licensePlate?.takeIf(String::isNotBlank)?.let { Text(it.uppercase(), Modifier.background(Color.White, RoundedCornerShape(3.dp)).border(1.dp, Color.Black, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp, vertical = 2.dp), color = Color.Black, fontFamily = FontFamily(android.graphics.Typeface.create("sans-serif-condensed", android.graphics.Typeface.BOLD)), fontWeight = FontWeight.Bold, fontSize = 12.sp) } ?: Spacer(Modifier.weight(1f))

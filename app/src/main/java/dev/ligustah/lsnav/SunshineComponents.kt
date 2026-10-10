@@ -5,6 +5,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -48,6 +49,7 @@ enum class ButtonTone { Primary, Secondary, Danger, Welcome }
 fun SunshineButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, tone: ButtonTone = ButtonTone.Primary, content: @Composable RowScope.() -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+    val focused by interaction.collectIsFocusedAsState()
     val down by animateFloatAsState(if (pressed) 1f else 0f, spring(stiffness = Spring.StiffnessMedium), label = "press")
     val dark = MaterialTheme.colorScheme.background == Color(0xFF0F0E1F)
     val colors = when {
@@ -59,7 +61,7 @@ fun SunshineButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: 
     }
     val border = when (tone) { ButtonTone.Danger -> Color(0xFF991B1B); ButtonTone.Secondary -> Color(0xFF9CA3AF); ButtonTone.Welcome -> Indigo950.copy(alpha = .4f); else -> Indigo800 }
     val foreground = when (tone) { ButtonTone.Welcome -> Indigo800; ButtonTone.Secondary -> MaterialTheme.colorScheme.onSurface; else -> Color.White }
-    Box(modifier.heightIn(min = 48.dp).offset(y = down.dp).alpha(if (enabled) 1f else .5f).shadow(if (pressed) 0.dp else 2.dp, RoundedCornerShape(6.dp)).clip(RoundedCornerShape(6.dp)).background(border)
+    Box(modifier.heightIn(min = 48.dp).border(if (focused) 2.dp else if (tone == ButtonTone.Secondary) 1.dp else 0.dp, if (focused) Color(0xFF818CF8) else if (tone == ButtonTone.Secondary) Color(0xFFD1D5DB) else Color.Transparent, RoundedCornerShape(6.dp)).offset(y = down.dp).alpha(if (enabled) 1f else .5f).shadow(if (pressed) 0.dp else 2.dp, RoundedCornerShape(6.dp)).clip(RoundedCornerShape(6.dp)).background(border)
         .clickable(interactionSource = interaction, indication = LocalIndication.current, enabled = enabled, role = Role.Button, onClick = onClick).padding(bottom = (4 - 2 * down).dp)) {
         CompositionLocalProvider(LocalContentColor provides foreground, LocalTextStyle provides MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.SemiBold)) {
             Row(Modifier.fillMaxWidth().background(Brush.verticalGradient(colors)).padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, content = content)
