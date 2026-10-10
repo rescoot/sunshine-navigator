@@ -183,7 +183,19 @@ class ViewModelTest {
         assertEquals(1, gateway.writes)
         assertEquals(1L, gateway.lastWrite?.scooterId)
         assertEquals(place, tappedTarget.place)
+        assertEquals(CommandOutcome.ServerAccepted(tappedTarget), model.state.value.lastCommandOutcome)
         assertFalse(model.state.value.sending)
+    }
+
+    @Test fun `incoming share result is tied to the latest resolved input`() = runTest(dispatcher) {
+        val gateway = FakeGateway()
+        val model = NavigationViewModel(application, SavedStateHandle(), gateway, resolver, MutableStateFlow(config))
+        runCurrent()
+        model.resolveIncoming("Berlin")
+        runCurrent()
+        assertEquals("Berlin", model.state.value.resolvedIncomingText)
+        model.resolveIncoming("another place")
+        assertNull(model.state.value.resolvedIncomingText)
     }
 
     @Test fun `navigation rejects a confirmation for a different scooter`() = runTest(dispatcher) {

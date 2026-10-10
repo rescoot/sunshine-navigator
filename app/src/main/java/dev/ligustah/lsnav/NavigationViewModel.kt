@@ -28,6 +28,7 @@ data class NavigationState(
     val lastCommandOutcome: CommandOutcome? = null,
     val query: String = "",
     val results: List<PlaceResult> = emptyList(),
+    val resolvedIncomingText: String? = null,
     val searching: Boolean = false,
     val error: String? = null
 )
@@ -71,6 +72,7 @@ class NavigationViewModel @JvmOverloads constructor(
                             scooters = if (old?.accountKey == config.accountKey) mutableState.value.scooters else RemoteData(),
                             destination = RemoteData(), savedLocations = RemoteData(),
                             personalPlaces = if (old?.accountKey == config.accountKey) mutableState.value.personalPlaces else RemoteData(),
+                            lastCommandOutcome = null,
                             error = null
                         )
                         if (config.isAuthenticated) {
@@ -151,7 +153,7 @@ class NavigationViewModel @JvmOverloads constructor(
         if (state.sending || scooter !in state.scooters.value.orEmpty()) return
         val config = state.configuration.copy(scooterId = scooter.id, scooterName = scooter.name)
         if (config == state.configuration) return
-        mutableState.value = state.copy(configuration = config, destination = RemoteData(), savedLocations = RemoteData(), error = null)
+        mutableState.value = state.copy(configuration = config, destination = RemoteData(), savedLocations = RemoteData(), lastCommandOutcome = null, error = null)
         destinationGeneration++; destinationJob?.cancel()
         locationsGeneration++; locationsJob?.cancel()
         refresh()
@@ -309,11 +311,11 @@ class NavigationViewModel @JvmOverloads constructor(
         if (text.isBlank() || text.length > MapsIntentParser.MAX_INPUT_LENGTH) return
         val generation = ++searchGeneration
         searchJob?.cancel()
-        mutableState.value = mutableState.value.copy(query = text, results = emptyList(), searching = true, error = null)
+        mutableState.value = mutableState.value.copy(query = text, results = emptyList(), resolvedIncomingText = null, lastCommandOutcome = null, searching = true, error = null)
         searchJob = viewModelScope.launch {
             try {
                 val results = resolver.resolve(text)
-                if (generation == searchGeneration) mutableState.value = mutableState.value.copy(results = results,
+                if (generation == searchGeneration) mutableState.value = mutableState.value.copy(results = results, resolvedIncomingText = text,
                     error = if (results.isEmpty()) "No destination found. Choose a place with a clear destination." else null)
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) {

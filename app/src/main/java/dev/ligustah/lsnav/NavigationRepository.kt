@@ -28,7 +28,7 @@ interface NavigationGateway {
     suspend fun sendToScooter(target: CommandTarget): CommandOutcome {
         if (!target.configuration.isReady) throw IllegalArgumentException("Choose a scooter")
         if (target.place == null) clearDestination(target.configuration) else setDestination(target.configuration, target.place)
-        return CommandOutcome.ServerAccepted
+        return CommandOutcome.ServerAccepted(target)
     }
     suspend fun savedLocations(configuration: AppConfiguration): List<PlaceResult> = emptyList()
     suspend fun destination(configuration: AppConfiguration): NavigationTarget
@@ -98,7 +98,7 @@ class NavigationRepository(
         require(target.configuration.isReady) { "Choose an available scooter" }
         target.place?.let { require(it.coordinates.isValid()) { "Invalid destination coordinates" } }
         if (target.place == null) clearDestination(target.configuration) else setDestination(target.configuration, target.place)
-        return CommandOutcome.ServerAccepted
+        return CommandOutcome.ServerAccepted(target)
     }
 
     override suspend fun savedLocations(configuration: AppConfiguration) = request(configuration) {
@@ -189,7 +189,7 @@ class NavigationRepository(
 }
 
 sealed interface CommandOutcome {
-    data object ServerAccepted : CommandOutcome
+    data class ServerAccepted(val target: CommandTarget) : CommandOutcome
     data class DeliveryUncertain(val target: CommandTarget) : CommandOutcome
 }
 

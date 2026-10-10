@@ -45,6 +45,7 @@ fun NavigationScreen(
     var favoriteDraftPlace by remember { mutableStateOf<PlaceResult?>(null) }
     var favoriteDraftId by remember { mutableStateOf<Long?>(null) }
     var favoriteLabel by remember { mutableStateOf("") }
+    var favoriteSaveStarted by remember { mutableStateOf(false) }
     var clearWarning by remember { mutableStateOf(false) }
     var sendingTarget by remember { mutableStateOf<CommandTarget?>(null) }
     var uncertainNeedsCheck by remember { mutableStateOf(false) }
@@ -64,10 +65,16 @@ fun NavigationScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     LaunchedEffect(sharedText, state.sending) { if (!sharedText.isNullOrBlank() && !state.sending) model.resolveIncoming(sharedText) }
-    LaunchedEffect(state.results, sharedText) {
-        if (!sharedText.isNullOrBlank() && state.results.size == 1) {
+    LaunchedEffect(state.results, state.resolvedIncomingText, sharedText) {
+        if (!sharedText.isNullOrBlank() && state.resolvedIncomingText == sharedText && state.results.size == 1) {
             destination = state.results.single()
             onShareConsumed()
+        }
+    }
+    LaunchedEffect(state.favoriteEditor) {
+        if (favoriteSaveStarted && !state.favoriteEditor.saving && state.favoriteEditor.draft == null && state.favoriteEditor.error == null) {
+            favoriteDraftPlace = null
+            favoriteSaveStarted = false
         }
     }
     BackHandler(destination != null) { destination = null }
@@ -111,7 +118,13 @@ fun NavigationScreen(
             }
             if (state.sending) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Sending to ${sendingTarget?.configuration?.scooterName.orEmpty()}…") }
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            when (val outcome = state.lastCommandOutcome) {
+            when (val outcome = state.lastCommandOutcome?.takeIf { result ->
+                val target = when (result) {
+                    is CommandOutcome.ServerAccepted -> result.target
+                    is CommandOutcome.DeliveryUncertain -> result.target
+                }
+                target.configuration == state.configuration && target.place == place
+            }) {
                 is CommandOutcome.ServerAccepted -> ResultCard("Request accepted", "Sunshine accepted this destination. Scooter receipt is not confirmed.", onDone)
                 is CommandOutcome.DeliveryUncertain -> Card { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Check destination before retrying", style = MaterialTheme.typography.titleMedium)
@@ -208,7 +221,7 @@ fun NavigationScreen(
             confirmButton = { TextButton(onClick = {
                 model.editFavorite(favoriteDraftId, FavoriteDraft(favoriteLabel.trim(), place))
                 model.saveFavorite()
-                if (state.configuration.favoritePermission != PermissionCapability.UpgradeRequired) favoriteDraftPlace = null
+                favoriteSaveStarted = true
             }, enabled = favoriteLabel.isNotBlank() && !state.favoriteEditor.saving) { Text("Save") } },
             dismissButton = { TextButton(onClick = { favoriteDraftPlace = null }) { Text("Cancel") } })
     }
