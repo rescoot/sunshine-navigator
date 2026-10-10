@@ -131,6 +131,38 @@ class ViewModelTest {
         assertNotNull(model.state.value.error)
     }
 
+    @Test fun `manual correction of an ambiguous share keeps current external results selectable`() = runTest(dispatcher) {
+        val gateway = FakeGateway()
+        val ambiguous = PlaceResult(Coordinates(48.85, 2.35), "Berlin Avenue")
+        val corrected = PlaceResult(Coordinates(40.71, -74.0), "New York")
+        val correctionResolver = CoordinateResolver(LocationLookup { query ->
+            when (query) {
+                "Ambiguous destination" -> listOf(place, ambiguous)
+                "Corrected destination" -> listOf(corrected)
+                else -> emptyList()
+            }
+        })
+        val model = NavigationViewModel(application, SavedStateHandle(), gateway, correctionResolver, MutableStateFlow(config), MemoryPending())
+        runCurrent()
+        model.beginIncomingRequest(17L, requireResolution = true)
+        model.resolveIncoming("Ambiguous destination", 17L)
+        runCurrent()
+        assertEquals(listOf(place, ambiguous), model.state.value.results)
+        assertFalse(model.state.value.incomingResolutionRequired)
+
+        model.updateQuery("Corrected destination", correctingIncomingRequestId = 17L)
+        assertEquals(17L, model.state.value.currentIncomingRequestId)
+        assertFalse(model.state.value.incomingResolutionRequired)
+        assertTrue(model.state.value.results.isEmpty())
+        advanceTimeBy(500)
+        runCurrent()
+
+        assertEquals(listOf(corrected), model.state.value.results)
+        assertEquals(17L, model.state.value.resolvedIncomingRequestId)
+        assertFalse(model.state.value.incomingResolutionRequired)
+        assertEquals(0, gateway.writes)
+    }
+
     @Test fun `share chooses a scooter on demand without saving a default`() = runTest(dispatcher) {
         val gateway = FakeGateway()
         val configurations = MutableStateFlow(config.copy(scooterId = null, scooterName = ""))

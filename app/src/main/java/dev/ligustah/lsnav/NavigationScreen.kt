@@ -140,7 +140,12 @@ fun NavigationScreen(
                 TextButton(onClick = clearPlace) { Text("‹  Places") }
                 IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Account and settings") }
             }
-            Text("Send place", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Send place", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
+                TextButton(onClick = { model.fetchScooters(true) }, enabled = state.configuration.isAuthenticated && !state.sending) {
+                    Text("Refresh scooters")
+                }
+            }
             Card { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(place.label, style = MaterialTheme.typography.titleLarge)
                 Text(place.coordinates.display(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -217,8 +222,13 @@ fun NavigationScreen(
                     Text("This session is missing ${state.configuration.missingOAuthScopes.joinToString()} access. Reconnect only when you need that capability.")
                     OutlinedButton(onClick = onSettings) { Text("Review connection") }
                 } }
-                OutlinedTextField(value = state.query, onValueChange = model::updateQuery, label = { Text("Search or paste a map link") },
-                    modifier = Modifier.fillMaxWidth(), enabled = !state.sending, singleLine = true)
+                OutlinedTextField(value = state.query, onValueChange = { value ->
+                    val correctingRequestId = incomingRequestId?.takeIf {
+                        !sharedText.isNullOrBlank() && state.currentIncomingRequestId == it
+                    }
+                    model.updateQuery(value, correctingRequestId)
+                    if (correctingRequestId != null) onShareConsumed()
+                }, label = { Text("Search or paste a map link") }, modifier = Modifier.fillMaxWidth(), enabled = !state.sending, singleLine = true)
                 if (state.searching) LinearProgressIndicator(Modifier.fillMaxWidth())
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 visibleResults.forEach { place -> PlaceRow(place.label, place.coordinates.display(), onClick = {

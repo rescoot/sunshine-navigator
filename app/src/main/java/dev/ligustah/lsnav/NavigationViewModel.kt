@@ -386,10 +386,19 @@ class NavigationViewModel @JvmOverloads constructor(
         )
     }
 
-    fun updateQuery(value: String) {
+    fun updateQuery(value: String, correctingIncomingRequestId: Long? = null) {
+        val current = mutableState.value
+        if (current.incomingResolutionRequired && current.currentIncomingRequestId != correctingIncomingRequestId) return
+        val currentRequestId = current.currentIncomingRequestId
+        val correctedRequestId = correctingIncomingRequestId?.takeIf { it == currentRequestId }
+            ?: current.resolvedIncomingRequestId?.takeIf { it == currentRequestId }
         searchGeneration++
         searchJob?.cancel()
-        mutableState.value = mutableState.value.copy(query = value, results = emptyList(), resolvedIncomingRequestId = null, searching = false)
+        mutableState.value = current.copy(
+            query = value, results = emptyList(), resolvedIncomingText = null,
+            resolvedIncomingRequestId = correctedRequestId, incomingResolutionRequired = if (correctedRequestId != null) false else current.incomingResolutionRequired,
+            searching = false
+        )
         if (value.length < 3) return
         searchJob = viewModelScope.launch { kotlinx.coroutines.delay(500); search() }
     }
@@ -407,23 +416,25 @@ class NavigationViewModel @JvmOverloads constructor(
                     error = if (results.isEmpty()) "No destination found. Choose a place with a clear destination." else null)
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) {
-                if (generation == searchGeneration) mutableState.value = mutableState.value.copy(error = userMessage(error), resolvedIncomingRequestId = requestId, incomingResolutionRequired = false)
+                if (generation == searchGeneration && mutableState.value.currentIncomingRequestId == requestId) mutableState.value = mutableState.value.copy(error = userMessage(error), resolvedIncomingRequestId = requestId, incomingResolutionRequired = false)
             } finally {
-                if (generation == searchGeneration) mutableState.value = mutableState.value.copy(searching = false)
+                if (generation == searchGeneration && mutableState.value.currentIncomingRequestId == requestId) mutableState.value = mutableState.value.copy(searching = false)
             }
         }
     }
 
     fun search() {
-        val query = mutableState.value.query
+        val current = mutableState.value
+        val query = current.query
         if (query.isBlank()) return
+        val incomingRequestId = current.resolvedIncomingRequestId?.takeIf { it == current.currentIncomingRequestId }
         val generation = ++searchGeneration
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             mutableState.value = mutableState.value.copy(searching = true, error = null)
             try {
                 val results = resolver.search(query)
-                if (generation == searchGeneration) mutableState.value = mutableState.value.copy(results = results, resolvedIncomingRequestId = null,
+                if (generation == searchGeneration) mutableState.value = mutableState.value.copy(results = results, resolvedIncomingRequestId = incomingRequestId,
                     error = if (results.isEmpty()) "No destination found. Enter an address or exact coordinates." else null)
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) {
