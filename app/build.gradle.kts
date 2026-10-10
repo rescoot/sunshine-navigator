@@ -1,4 +1,5 @@
 plugins {
+    id("io.github.takahirom.roborazzi")
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.openapi.generator")
@@ -100,8 +101,13 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
     
+    testImplementation(platform("androidx.compose:compose-bom:2024.02.02"))
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.16.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.16.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-junit-rule:1.16.0")
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.robolectric:robolectric:4.11.1")
+    testImplementation("org.robolectric:robolectric:4.14.1")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.0")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.02.02"))
