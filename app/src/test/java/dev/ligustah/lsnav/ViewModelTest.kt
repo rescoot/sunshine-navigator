@@ -28,7 +28,7 @@ class ViewModelTest {
         var pending: PendingCommand? = null
         override suspend fun read() = pending
         override suspend fun write(target: CommandTarget) {
-            pending = PendingCommand(target.configuration.accountFingerprint(), requireNotNull(target.configuration.scooterId), target.configuration.scooterName, target.place)
+            pending = PendingCommand(target.configuration.accountFingerprint(), requireNotNull(target.configuration.scooterId), target.configuration.scooterName, target.place, target.requestKey)
         }
         override suspend fun clear() { pending = null }
     }
@@ -265,7 +265,9 @@ class ViewModelTest {
         assertEquals(1, gateway.writes)
         assertEquals(1L, gateway.lastWrite?.scooterId)
         assertEquals(place, tappedTarget.place)
-        assertEquals(CommandOutcome.ServerAccepted(tappedTarget), model.state.value.lastCommandOutcome)
+        val accepted = (model.state.value.lastCommandOutcome as CommandOutcome.ServerAccepted).target
+        assertEquals(tappedTarget, accepted.copy(requestKey = null))
+        assertNotNull(accepted.requestKey)
         assertFalse(model.state.value.sending)
     }
 
@@ -309,17 +311,61 @@ class ViewModelTest {
         runCurrent()
         gateway.write.complete(Unit)
         runCurrent()
-        assertEquals(CommandTarget(config, place), model.state.value.uncertainTarget)
+        val original = requireNotNull(model.state.value.uncertainTarget)
+        assertEquals(CommandTarget(config, place), original.copy(requestKey = null))
+        assertEquals(original.requestKey, pending.pending?.requestKey)
         assertNotNull(pending.pending)
         model.resolveIncoming("Berlin")
         runCurrent()
-        assertEquals(CommandTarget(config, place), model.state.value.uncertainTarget)
+        assertEquals(original, model.state.value.uncertainTarget)
         gateway.writeError = null
         model.checkUncertainCommand()
         runCurrent()
         assertNull(pending.pending)
         assertNotNull(model.state.value.uncertainCheckedDestination)
-        assertEquals(CommandTarget(config, place), model.state.value.uncertainTarget)
+        assertEquals(original, model.state.value.uncertainTarget)
+    }
+
+    @Test fun `processing receipt keeps recovery gated without redispatch`() = runTest(dispatcher) {
+        val gateway = FakeGateway()
+        gateway.firstRead.complete(NavigationTarget())
+        var receipt = "processing"
+        val source = object : NavigationGateway by gateway {
+            override suspend fun navigationReceipt(target: CommandTarget): String {
+                assertEquals("request-12345678", target.requestKey)
+                return receipt
+            }
+        }
+        val pending = MemoryPending().apply { pending = PendingCommand(config.accountFingerprint(), 1L, "Test scooter", place, "request-12345678") }
+        val model = model(source, pending = pending)
+        runCurrent()
+        model.checkUncertainCommand()
+        runCurrent()
+        assertNotNull(pending.pending)
+        assertNull(model.state.value.uncertainCheckedDestination)
+        receipt = "accepted"
+        model.checkUncertainCommand()
+        runCurrent()
+        assertNull(pending.pending)
+        assertNotNull(model.state.value.uncertainCheckedDestination)
+        assertEquals(0, gateway.writes)
+    }
+
+    @Test fun `definitive server rejection clears the pending marker`() = runTest(dispatcher) {
+        val gateway = FakeGateway()
+        gateway.firstRead.complete(NavigationTarget())
+        val source = object : NavigationGateway by gateway {
+            override suspend fun scooters(configuration: AppConfiguration, forceRefresh: Boolean) = listOf(ScooterSummary(1, "Test scooter", true))
+            override suspend fun sendToScooter(target: CommandTarget): CommandOutcome = throw NavigatorApiException(422, "scooter_offline")
+        }
+        val pending = MemoryPending()
+        val model = model(source, pending = pending)
+        runCurrent()
+        model.sendToScooter(CommandTarget(config, place))
+        runCurrent()
+        assertNull(pending.pending)
+        assertNull(model.state.value.uncertainTarget)
+        assertNotNull(model.state.value.error)
     }
 
     @Test fun `pending command is restored only for its matching account`() = runTest(dispatcher) {

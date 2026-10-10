@@ -15,6 +15,7 @@ data class SettingsState(
     val initialized: Boolean = false,
     val profile: AppProfile = AppProfile(),
     val draft: AppConfiguration = AppConfiguration(),
+    val account: RemoteData<AccountIdentity?> = RemoteData(),
     val scooters: RemoteData<List<ScooterSummary>> = RemoteData(),
     val scooterReconnectRequired: Boolean = false,
     val authenticating: Boolean = false,
@@ -34,6 +35,7 @@ class SettingsViewModel @JvmOverloads constructor(
     private val mutableState = MutableStateFlow(SettingsState())
     val state: StateFlow<SettingsState> = mutableState
     private var fetchJob: Job? = null
+    private var accountJob: Job? = null
     private var generation = 0
 
     init {
@@ -45,10 +47,14 @@ class SettingsViewModel @JvmOverloads constructor(
                     val accountChanged = previous.profile.configuration.accountKey != config.accountKey
                     val draft = if (!previous.initialized || accountChanged || previous.draft == previous.profile.configuration) config else previous.draft
                     mutableState.value = previous.copy(initialized = true, profile = profile, draft = draft,
+                        account = if (accountChanged) RemoteData() else previous.account,
                         scooters = if (accountChanged) RemoteData() else previous.scooters,
                         scooterReconnectRequired = if (accountChanged) false else previous.scooterReconnectRequired)
-                    if (accountChanged && config.isAuthenticated) fetch(false)
-                    if (!config.isAuthenticated) { generation++; fetchJob?.cancel() }
+                    if (accountChanged) {
+                        accountJob?.cancel()
+                        if (config.isAuthenticated) { fetch(false); fetchAccount() }
+                    }
+                    if (!config.isAuthenticated) { generation++; fetchJob?.cancel(); accountJob?.cancel() }
                 }
             } catch (error: CancellationException) { throw error
             } catch (_: Exception) { mutableState.value = mutableState.value.copy(initialized = true, error = "Couldn't load your settings. Close and reopen the app.") }
@@ -90,6 +96,22 @@ class SettingsViewModel @JvmOverloads constructor(
                 )
             } finally {
                 if (current == generation) mutableState.value = mutableState.value.copy(scooters = mutableState.value.scooters.copy(loading = false))
+            }
+        }
+    }
+
+    fun fetchAccount() {
+        val config = mutableState.value.profile.configuration
+        if (!config.isAuthenticated) return
+        accountJob?.cancel()
+        mutableState.value = mutableState.value.copy(account = mutableState.value.account.refreshing())
+        accountJob = viewModelScope.launch {
+            try {
+                val identity = gateway.account(config)
+                if (mutableState.value.profile.configuration.accountKey == config.accountKey) mutableState.value = mutableState.value.copy(account = RemoteData.loaded(identity))
+            } catch (error: CancellationException) { throw error
+            } catch (_: Exception) {
+                if (mutableState.value.profile.configuration.accountKey == config.accountKey) mutableState.value = mutableState.value.copy(account = RemoteData(error = "Couldn't load your account"))
             }
         }
     }
@@ -150,10 +172,12 @@ class SettingsViewModel @JvmOverloads constructor(
         mutableState.value = mutableState.value.copy(saving = true)
         viewModelScope.launch {
             try {
+                val config = mutableState.value.profile.configuration
+                val revoked = OAuthManager.get(getApplication()).revokeAndClear(config)
                 settings.saveProfile(AppProfile())
-                OAuthManager.get(getApplication()).clear()
                 (gateway as? NavigationRepository)?.clearCaches()
                 draft(AppConfiguration())
+                if (!revoked) mutableState.value = mutableState.value.copy(error = "Signed out locally. Sunshine could not be reached to revoke access; remove this app in Sunshine's authorized applications.")
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) { mutableState.value = mutableState.value.copy(error = userMessage(error))
             } finally { mutableState.value = mutableState.value.copy(saving = false) }

@@ -32,13 +32,20 @@ data class ScooterSummary(
     val model: ScooterModelInfo? = null,
     val licensePlate: String? = null,
     val lastSeenAt: String? = null,
-    val images: ScooterImages = ScooterImages()
-)
+    val images: ScooterImages = ScooterImages(),
+    val canNavigate: Boolean? = null
+) {
+    val availableForNavigation get() = online == true && canNavigate != false
+}
 data class NavigationTarget(val place: PlaceResult? = null, val multiStopSupported: Boolean = false)
 data class SavedPlace(val id: Long, val place: PlaceResult, val isFavorite: Boolean = true, val searchKey: String? = null)
 data class PersonalPlaces(val favorites: List<SavedPlace> = emptyList(), val recent: List<SavedPlace> = emptyList())
 data class FavoriteDraft(val label: String, val place: PlaceResult, val searchKey: String? = null)
-data class CommandTarget(val configuration: AppConfiguration, val place: PlaceResult?)
+data class AccountIdentity(val id: Long, val name: String, val email: String, val avatarUrl: String? = null)
+data class CommandTarget(val configuration: AppConfiguration, val place: PlaceResult?, val requestKey: String? = null)
+class NavigatorApiException(status: Int, val code: String?) : org.openapitools.client.infrastructure.ClientException("Sunshine rejected the request", status) {
+    val definitelyNotSent get() = code in setOf("validation_failed", "invalid_request_key", "scooter_offline", "command_rejected", "forbidden", "insufficient_scope", "unauthorized")
+}
 data class AppProfile(val configuration: AppConfiguration = AppConfiguration(), val onboardingComplete: Boolean = false)
 data class DestinationChange(val configuration: AppConfiguration)
 

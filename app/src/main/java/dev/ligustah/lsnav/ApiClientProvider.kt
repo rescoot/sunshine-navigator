@@ -7,6 +7,8 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.io.IOException
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 
 class ApiClientProvider(baseUrl: String, token: String?, transport: OkHttpClient = OkHttpClient()) {
     private val basePath = normalizeBaseUrl(baseUrl)
@@ -25,6 +27,21 @@ class ApiClientProvider(baseUrl: String, token: String?, transport: OkHttpClient
         cancelled.set(true)
         client.dispatcher.cancelAll()
     }
+
+    fun json(path: String, method: String = "GET", body: org.json.JSONObject? = null, requestKey: String? = null): org.json.JSONObject {
+        val request = okhttp3.Request.Builder().url("$basePath/$path")
+        if (requestKey != null) request.header("Idempotency-Key", requestKey)
+        val payload = body?.toString()?.toRequestBody("application/json".toMediaType())
+        request.method(method, payload)
+        client.newCall(request.build()).execute().use { response ->
+            val json = response.body?.string()?.takeIf(String::isNotBlank)?.let(::orgJson) ?: org.json.JSONObject()
+            if (response.code >= 500) throw org.openapitools.client.infrastructure.ServerException("Sunshine is unavailable", response.code)
+            if (!response.isSuccessful) throw NavigatorApiException(response.code, json.optJSONObject("error")?.optString("code"))
+            return json
+        }
+    }
+
+    private fun orgJson(value: String) = org.json.JSONObject(value)
 
     fun getNavigationApi() = NavigationApi(basePath = basePath, client = client)
     fun getScootersApi() = ScootersApi(basePath = basePath, client = client)

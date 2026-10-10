@@ -58,7 +58,7 @@ fun SettingsScreen(model: SettingsViewModel = viewModel(), onSignIn: (String, St
             }
         }
     } else {
-        AccountScreen(state, onBack, model::select, model::chooseOnDemand, model::save, login, { advanced = true }, model::signOut, { model.fetch(true) })
+        AccountScreen(state, onBack, model::select, model::chooseOnDemand, model::save, login, { advanced = true }, model::signOut, { model.fetch(true); model.fetchAccount() })
     }
     if (advanced) ModalBottomSheet(onDismissRequest = { advanced = false }) {
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -151,18 +151,14 @@ fun AccountScreen(state: SettingsState, onBack: () -> Unit = {}, onSelect: (Scoo
             SunshineCard(panel = true) { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Account", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Box(Modifier.size(40.dp).background(Color(0xFF6B7280), CircleShape), contentAlignment = Alignment.Center) { Text("S", color = Color.White, fontWeight = FontWeight.Bold) }
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(Uri.parse(configuration.baseUrl).host ?: configuration.baseUrl, fontWeight = FontWeight.SemiBold)
-                        Text(if (configuration.oauthSessionId != null) "Sunshine sign-in" else "API token", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    AccountAvatar(state.account.value, Modifier.size(48.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(state.account.value?.name?.takeIf(String::isNotBlank) ?: if (state.account.loading) "Loading account…" else "Sunshine account", fontWeight = FontWeight.SemiBold)
+                        state.account.value?.email?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        Text(Uri.parse(configuration.baseUrl).host.orEmpty(), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (configuration.canRead) SunshineBadge("Read", BadgeTone.Success)
-                    if (configuration.canManageFavorites) SunshineBadge("Favourites", BadgeTone.Success)
-                    if (configuration.canControlScooter) SunshineBadge("Scooter control", BadgeTone.Success)
-                    if (configuration.oauthSessionId == null) SunshineBadge("Token access not verified", BadgeTone.Neutral)
-                }
+                state.account.error?.let { TextButton(onRefresh) { Text("Retry account details") } }
                 if (configuration.needsPermissionUpgrade) { SunshineBadge("Additional access needed", BadgeTone.Warning); SunshineButton(onReconnect) { Text("Reconnect") } }
             } }
             SunshineCard(panel = true) { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -200,27 +196,32 @@ private fun ConnectionFields(state: SettingsState, model: SettingsViewModel, rec
 
 @Composable
 private fun DefaultScooterOptions(scooters: List<ScooterSummary>, selected: Long?, enabled: Boolean, onSelect: (ScooterSummary) -> Unit, onAsk: () -> Unit) {
-    val options = scooters + listOf<ScooterSummary?>(null)
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val columns = if (maxWidth >= 300.dp && LocalDensity.current.fontScale < 1.3f) 2 else 1
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            options.chunked(columns).forEach { row ->
-                Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    row.forEach { scooter -> PreferenceChip(scooter, scooter?.id == selected, enabled, { if (scooter == null) onAsk() else onSelect(scooter) }, Modifier.weight(1f).fillMaxHeight()) }
-                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
-                }
-            }
+    var showUnavailable by remember { mutableStateOf(false) }
+    val available = scooters.filter { it.availableForNavigation || it.id == selected || showUnavailable }
+    Column {
+        PreferenceChip(null, selected == null, enabled, onAsk)
+        available.forEach { scooter ->
+            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+            PreferenceChip(scooter, scooter.id == selected, enabled, { onSelect(scooter) })
+        }
+        val hidden = scooters.count { !it.availableForNavigation && it.id != selected }
+        if (hidden > 0) TextButton({ showUnavailable = !showUnavailable }) {
+            Text(if (showUnavailable) "Hide unavailable scooters" else "Show unavailable scooters ($hidden)")
         }
     }
 }
 
 @Composable
-private fun PreferenceChip(scooter: ScooterSummary?, selected: Boolean, enabled: Boolean, onClick: () -> Unit, modifier: Modifier) {
-    SunshineCard(modifier.clickable(enabled = enabled, onClick = onClick), panel = true, accent = if (selected) Color(0xFF4F46E5) else null) {
-        Column(Modifier.fillMaxWidth().padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (scooter != null) ScooterArt(scooter, Modifier.fillMaxWidth().height(48.dp))
-            else Box(Modifier.height(48.dp), contentAlignment = Alignment.Center) { Icon(Icons.Default.GridView, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary) }
-            Text(scooter?.name ?: "Ask every time", Modifier.heightIn(min = with(LocalDensity.current) { 44.sp.toDp() }), fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+private fun PreferenceChip(scooter: ScooterSummary?, selected: Boolean, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().heightIn(min = if (scooter == null) 56.dp else 80.dp)
+        .clickable(enabled = enabled, role = androidx.compose.ui.semantics.Role.RadioButton, onClick = onClick)
+        .padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (scooter != null) ScooterArt(scooter, Modifier.width(96.dp).height(76.dp))
+        else Icon(Icons.Default.GridView, null, Modifier.padding(horizontal = 12.dp).size(24.dp), tint = MaterialTheme.colorScheme.primary)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(scooter?.name ?: "Ask every time", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            if (scooter != null && !scooter.availableForNavigation) Text(if (scooter.online != true) "Offline" else "Navigation not permitted", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        RadioButton(selected, onClick = null, enabled = enabled)
     }
 }

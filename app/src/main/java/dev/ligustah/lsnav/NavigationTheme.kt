@@ -12,9 +12,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.core.view.WindowCompat
 
 @Composable
-fun NavigationTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+fun NavigationTheme(dark: Boolean = isSystemInDarkTheme(), account: AccountIdentity? = null, content: @Composable () -> Unit) {
     val colors = if (dark) darkColors else lightColors
-    MaterialTheme(colorScheme = colors, content = content)
+    androidx.compose.runtime.CompositionLocalProvider(LocalAccountIdentity provides account) {
+        MaterialTheme(colorScheme = colors, content = content)
+    }
 }
 
 fun configureNavigationWindow(window: Window, dark: Boolean) {

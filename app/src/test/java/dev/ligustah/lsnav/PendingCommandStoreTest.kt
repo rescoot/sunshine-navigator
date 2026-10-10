@@ -19,11 +19,11 @@ class PendingCommandStoreTest {
         val store = PendingCommandStore(application)
         val configuration = AppConfiguration("secret-token", "https://example.org", 7, "Scooter")
         val place = PlaceResult(Coordinates(52.52, 13.41), "Berlin")
-        store.write(CommandTarget(configuration, place))
+        store.write(CommandTarget(configuration, place, "request-12345678"))
         val file = File(application.noBackupFilesDir, "pending-navigation.json")
         val content = file.readText()
         assertFalse(content.contains("secret-token"))
-        assertEquals(PendingCommand(configuration.accountFingerprint(), 7, "Scooter", place), store.read())
+        assertEquals(PendingCommand(configuration.accountFingerprint(), 7, "Scooter", place, "request-12345678"), store.read())
         store.clear()
         assertEquals(null, store.read())
     }

@@ -12,7 +12,8 @@ data class PendingCommand(
     val accountFingerprint: String,
     val scooterId: Long,
     val scooterName: String,
-    val place: PlaceResult?
+    val place: PlaceResult?,
+    val requestKey: String? = null
 )
 
 interface PendingCommandPersistence {
@@ -32,13 +33,14 @@ class PendingCommandStore(context: Context) : PendingCommandPersistence {
             require(coordinates.isValid()) { "Invalid pending destination" }
             PlaceResult(coordinates, json.getString("label"))
         }
-        PendingCommand(json.getString("accountFingerprint"), json.getLong("scooterId"), json.getString("scooterName"), place)
+        PendingCommand(json.getString("accountFingerprint"), json.getLong("scooterId"), json.getString("scooterName"), place, json.optString("requestKey").takeIf { it.matches(Regex("[a-zA-Z0-9_-]{8,128}")) })
     }
 
     override suspend fun write(target: CommandTarget) = withContext(Dispatchers.IO) {
         val json = JSONObject().put("accountFingerprint", target.configuration.accountFingerprint())
             .put("scooterId", target.configuration.scooterId)
             .put("scooterName", target.configuration.scooterName)
+            .put("requestKey", target.requestKey)
         target.place?.let {
             json.put("latitude", it.coordinates.latitude).put("longitude", it.coordinates.longitude).put("label", it.label)
         }

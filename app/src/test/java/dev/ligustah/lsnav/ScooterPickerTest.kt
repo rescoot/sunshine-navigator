@@ -19,28 +19,38 @@ class ScooterPickerTest {
 
     @Test fun gridAlignsCardsWithDifferentNamesAndConnectivityWithoutModelNoise() {
         val first = online.copy(state = "stand-by", model = ScooterModelInfo(modelName = "Unneeded model", enginePowerRatingW = 4000), licensePlate = "176 JLG")
-        val second = offline.copy(name = "A scooter with a longer name", state = "hibernating")
-        compose.setContent { NavigationTheme { ScooterPicker(listOf(first, second), true, 1, {}, replacement = 1L to "Current: Messedamm 26, Berlin") } }
+        val second = online.copy(id = 2, name = "A scooter with a longer name", state = "hibernating")
+        compose.setContent { NavigationTheme { ScooterPicker(listOf(first, second), true, 1, {}) } }
         compose.waitForIdle()
         val a = compose.onNodeWithContentDescription("Send to Bluebird, online").fetchSemanticsNode().boundsInRoot
-        val b = compose.onNodeWithContentDescription("Send to A scooter with a longer name, offline").fetchSemanticsNode().boundsInRoot
+        val b = compose.onNodeWithContentDescription("Send to A scooter with a longer name, online").fetchSemanticsNode().boundsInRoot
         assertEquals(a.top, b.top, 1f)
         assertEquals(a.bottom, b.bottom, 1f)
         assertEquals(a.width, b.width, 1f)
         compose.onNodeWithText("Unneeded model", substring = true).assertDoesNotExist()
         compose.onNodeWithText("kW", substring = true).assertDoesNotExist()
-        compose.onNodeWithContentDescription("Send to A scooter with a longer name, offline").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Send to A scooter with a longer name, online").assertIsEnabled()
     }
 
-    @Test fun preferenceGridUsesTwoColumnsForFiveScootersAndIncludesAskEveryTime() {
+    @Test fun preferenceListIsCompactAndIncludesAskEveryTime() {
         val fleet = (1L..5L).map { ScooterSummary(it, "Scooter $it", true) }
         compose.setContent { NavigationTheme { AccountScreen(SettingsState(initialized = true, scooters = RemoteData.loaded(fleet))) } }
         val a = compose.onNodeWithText("Scooter 1").fetchSemanticsNode().boundsInRoot
         val b = compose.onNodeWithText("Scooter 2").fetchSemanticsNode().boundsInRoot
         val c = compose.onNodeWithText("Scooter 3").fetchSemanticsNode().boundsInRoot
-        assertEquals(a.top, b.top, 1f)
-        assertTrue(c.top > a.bottom)
+        assertTrue(b.top > a.bottom)
+        assertTrue(c.top > b.bottom)
         compose.onNodeWithText("Ask every time").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun unavailablePreferencesAreHiddenUntilExplicitlyExpanded() {
+        val fleet = listOf(online, offline, ScooterSummary(3, "Read only", true, canNavigate = false))
+        compose.setContent { NavigationTheme { AccountScreen(SettingsState(initialized = true, scooters = RemoteData.loaded(fleet))) } }
+        compose.onNodeWithText("Clementine").assertDoesNotExist()
+        compose.onNodeWithText("Read only").assertDoesNotExist()
+        compose.onNodeWithText("Show unavailable scooters (2)").performScrollTo().performClick()
+        compose.onNodeWithText("Clementine").assertExists()
+        compose.onNodeWithText("Read only").assertExists()
     }
 
     @Test fun onlyOnlineExplicitTapSelectsSendTarget() {
@@ -48,7 +58,7 @@ class ScooterPickerTest {
         compose.setContent { NavigationTheme { ScooterPicker(listOf(online, offline), true, 1, { selections++ }) } }
         compose.waitForIdle()
         assertEquals(0, selections)
-        compose.onNodeWithContentDescription("Send to Clementine, offline").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Send to Clementine, offline").assertDoesNotExist()
         compose.onNodeWithContentDescription("Send to Bluebird, online").performClick()
         assertEquals(1, selections)
     }
@@ -57,7 +67,7 @@ class ScooterPickerTest {
         var selections = 0
         var continues = 0
         compose.setContent { NavigationTheme { SetupScootersScreen(SettingsState(scooters = RemoteData.loaded(listOf(online, offline))), onSelect = { selections++ }, onContinue = { continues++ }) } }
-        compose.onNodeWithContentDescription("Choose Clementine as default").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Choose Bluebird as default").performScrollTo().performClick()
         assertEquals(1, selections)
         assertEquals(0, continues)
     }
@@ -79,6 +89,6 @@ class ScooterPickerTest {
     @Test fun pendingRecoveryDisablesEverySendCard() {
         compose.setContent { NavigationTheme { ScooterPicker(listOf(online, offline), false, 1, {}) } }
         compose.onNodeWithContentDescription("Send to Bluebird, online").assertIsNotEnabled()
-        compose.onNodeWithContentDescription("Send to Clementine, offline").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Send to Clementine, offline").assertDoesNotExist()
     }
 }

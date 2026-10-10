@@ -27,13 +27,18 @@ import coil.compose.AsyncImage
 import java.time.*
 
 @Composable
-fun ScooterPicker(scooters: List<ScooterSummary>, enabled: Boolean, defaultScooterId: Long?, onSelect: (ScooterSummary) -> Unit, selectionMode: Boolean = false, sendingId: Long? = null, acceptedId: Long? = null, replacement: Pair<Long, String>? = null, onCardBounds: (Long, Rect) -> Unit = { _, _ -> }) {
+fun ScooterPicker(scooters: List<ScooterSummary>, enabled: Boolean, defaultScooterId: Long?, onSelect: (ScooterSummary) -> Unit, selectionMode: Boolean = false, sendingId: Long? = null, acceptedId: Long? = null, onCardBounds: (Long, Rect) -> Unit = { _, _ -> }) {
+    val available = scooters.filter { it.availableForNavigation || it.id == sendingId || it.id == acceptedId }
+    if (available.isEmpty()) {
+        EmptyPlaces("No scooters available to send to. Bring a scooter online, then refresh.")
+        return
+    }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val columns = if (maxWidth >= 320.dp && LocalDensity.current.fontScale < 1.3f) 2 else 1
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            scooters.sortedBy { if (it.id == defaultScooterId) 0 else 1 }.chunked(columns).forEach { row ->
+            available.sortedBy { if (it.id == defaultScooterId) 0 else 1 }.chunked(columns).forEach { row ->
                 Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    row.forEach { scooter -> key(scooter.id) { AppearingItem(scooters.indexOf(scooter), Modifier.weight(1f).fillMaxHeight()) { ScooterTile(scooter, scooter.id == defaultScooterId, enabled, { onSelect(scooter) }, Modifier.fillMaxSize().onGloballyPositioned { onCardBounds(scooter.id, it.boundsInRoot()) }, selectionMode, sendingId == scooter.id, acceptedId == scooter.id, replacement?.takeIf { it.first == scooter.id }?.second, sendingId != null && sendingId != scooter.id) } } }
+                    row.forEach { scooter -> key(scooter.id) { AppearingItem(scooters.indexOf(scooter), Modifier.weight(1f).fillMaxHeight()) { ScooterTile(scooter, scooter.id == defaultScooterId, enabled, { onSelect(scooter) }, Modifier.fillMaxSize().onGloballyPositioned { onCardBounds(scooter.id, it.boundsInRoot()) }, selectionMode, sendingId == scooter.id, acceptedId == scooter.id, sendingId != null && sendingId != scooter.id) } } }
                     repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
@@ -59,11 +64,10 @@ fun StatusDot(scooter: ScooterSummary, modifier: Modifier = Modifier) {
 fun ScooterArt(scooter: ScooterSummary, modifier: Modifier = Modifier) {
     val offline = scooter.online != true
     Box(modifier, contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxWidth(.8f).height(12.dp).align(Alignment.BottomCenter)) { drawOval(Color.Black.copy(alpha = .07f)) }
         val image = listOf(scooter.images.right, scooter.images.front, scooter.images.left).firstOrNull { it?.startsWith("https://") == true }
         AsyncImage(imageLoader = LocalArtworkLoader.current ?: coil.Coil.imageLoader(androidx.compose.ui.platform.LocalContext.current), model = image, contentDescription = null, fallback = painterResource(R.drawable.scooter_placeholder), error = painterResource(R.drawable.scooter_placeholder), placeholder = painterResource(R.drawable.scooter_placeholder),
             colorFilter = if (offline) ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(.5f) }) else null,
-            modifier = Modifier.fillMaxSize().padding(4.dp).alpha(if (offline) .75f else 1f))
+            modifier = Modifier.fillMaxSize().alpha(if (offline) .75f else 1f))
     }
 }
 
@@ -74,13 +78,13 @@ internal fun lastSeenLabel(value: String?): String {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ScooterTile(scooter: ScooterSummary, isDefault: Boolean, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, selectionMode: Boolean = false, sending: Boolean = false, accepted: Boolean = false, replaces: String? = null, dimmed: Boolean = false) {
+fun ScooterTile(scooter: ScooterSummary, isDefault: Boolean, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, selectionMode: Boolean = false, sending: Boolean = false, accepted: Boolean = false, dimmed: Boolean = false) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val focused by interaction.collectIsFocusedAsState()
     val scale by animateFloatAsState(if (pressed) .97f else 1f, spring(), label = "tile press")
     SunshineCard(modifier.scale(scale).alpha(if (dimmed) .6f else 1f).semantics(mergeDescendants = true) { contentDescription = if (selectionMode) "Choose ${scooter.name} as default" else "Send to ${scooter.name}, ${if (scooter.online == true) "online" else "offline"}" }
-        .clickable(interactionSource = interaction, indication = LocalIndication.current, enabled = enabled && (selectionMode || scooter.online == true), role = Role.Button, onClick = onClick), accent = if (accepted) Color(0xFF22C55E) else if (focused || selectionMode && isDefault || sending) Color(0xFF4F46E5) else null) {
+        .clickable(interactionSource = interaction, indication = LocalIndication.current, enabled = enabled && (selectionMode || scooter.availableForNavigation), role = Role.Button, onClick = onClick), accent = if (accepted) Color(0xFF22C55E) else if (focused || selectionMode && isDefault || sending) Color(0xFF4F46E5) else null) {
         Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth().heightIn(min = 28.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 scooter.licensePlate?.takeIf(String::isNotBlank)?.let { Text(it.uppercase(), Modifier.background(Color.White, RoundedCornerShape(3.dp)).border(1.dp, Color.Black, RoundedCornerShape(3.dp)).padding(horizontal = 5.dp, vertical = 2.dp), color = Color.Black, fontFamily = FontFamily(android.graphics.Typeface.create("sans-serif-condensed", android.graphics.Typeface.BOLD)), fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1) }
@@ -88,8 +92,8 @@ fun ScooterTile(scooter: ScooterSummary, isDefault: Boolean, enabled: Boolean, o
                 if (isDefault) Text("Default", Modifier.background(Color(0xFF4338CA).copy(alpha = .1f), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp, vertical = 3.dp), color = MaterialTheme.colorScheme.primary, fontSize = 10.sp, fontWeight = FontWeight.Medium)
                 StatusDot(scooter)
             }
-            ScooterArt(scooter, Modifier.fillMaxWidth().height(96.dp))
-            Text(scooter.name, Modifier.heightIn(min = with(LocalDensity.current) { 46.sp.toDp() }), fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            ScooterArt(scooter, Modifier.fillMaxWidth().aspectRatio(1.25f))
+            Text(scooter.name, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val status = when {
                 sending -> "Sending…"
                 accepted -> "Sent"
@@ -104,15 +108,6 @@ fun ScooterTile(scooter: ScooterSummary, isDefault: Boolean, enabled: Boolean, o
                 if (accepted) Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF22C55E), modifier = Modifier.size(18.dp))
                 Text(status, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = if (scooter.online == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            val detail = when {
-                accepted -> "Sunshine accepted the place"
-                sending -> "Waiting for Sunshine"
-                scooter.online != true && !selectionMode -> "Unavailable for sending"
-                replaces != null -> replaces
-                selectionMode && isDefault -> "Preferred scooter"
-                else -> ""
-            }
-            Text(detail, Modifier.heightIn(min = with(LocalDensity.current) { 36.sp.toDp() }), fontSize = 12.sp, lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         if (sending) TurboBar()
     }

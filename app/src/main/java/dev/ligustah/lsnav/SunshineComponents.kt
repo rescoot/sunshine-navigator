@@ -20,6 +20,8 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 
@@ -109,7 +111,7 @@ fun NavigatorBar(title: String = "Navigator", loading: Boolean = false, onBack: 
             if (onBack != null) IconButton(onBack) { Icon(Icons.Default.ArrowBack, "Back", tint = Color.White) } else SunMark(Modifier.padding(6.dp).size(22.dp))
             Text(title, Modifier.weight(1f).padding(start = 6.dp), color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             if (onRefresh != null) IconButton(onRefresh) { Icon(Icons.Default.Refresh, "Refresh places and scooters", tint = Color.White) }
-            if (onAccount != null) IconButton(onAccount) { Box(Modifier.size(32.dp).background(Color(0xFF6B7280), CircleShape), contentAlignment = Alignment.Center) { Icon(Icons.Default.Person, "Account and settings", tint = Color.White, modifier = Modifier.size(22.dp)) } }
+            if (onAccount != null) IconButton(onAccount) { AccountAvatar(LocalAccountIdentity.current, Modifier.size(32.dp).semantics { contentDescription = "Account and settings" }) }
         }
         if (!hero) Box(Modifier.fillMaxWidth().height(2.dp).background(if (dark) Indigo800 else Color(0xFF4338CA)))
         if (loading) TurboBar()

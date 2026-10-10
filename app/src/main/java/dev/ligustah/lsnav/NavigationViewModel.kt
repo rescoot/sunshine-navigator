@@ -152,10 +152,10 @@ class NavigationViewModel @JvmOverloads constructor(
                 pendingCommandLoading = false,
                 pendingCommandForOtherAccount = pending != null && pending.accountFingerprint != config.accountFingerprint(),
                 uncertainTarget = pending?.takeIf { it.accountFingerprint == config.accountFingerprint() }?.let {
-                    CommandTarget(config.copy(scooterId = it.scooterId, scooterName = it.scooterName), it.place)
+                    CommandTarget(config.copy(scooterId = it.scooterId, scooterName = it.scooterName), it.place, it.requestKey)
                 },
                 lastCommandOutcome = pending?.takeIf { it.accountFingerprint == config.accountFingerprint() }?.let {
-                    CommandOutcome.DeliveryUncertain(CommandTarget(config.copy(scooterId = it.scooterId, scooterName = it.scooterName), it.place))
+                    CommandOutcome.DeliveryUncertain(CommandTarget(config.copy(scooterId = it.scooterId, scooterName = it.scooterName), it.place, it.requestKey))
                 }
             )
         } catch (error: CancellationException) { throw error
@@ -461,6 +461,8 @@ class NavigationViewModel @JvmOverloads constructor(
         mutableState.value = current.copy(checkingUncertain = true, uncertainCheckError = null)
         commandJob = viewModelScope.launch {
             try {
+                val receipt = gateway.navigationReceipt(target)
+                if (receipt != null && receipt !in setOf("accepted", "rejected")) throw java.io.IOException("Sunshine has not confirmed this request yet. Check again later; no command was resent.")
                 val actual = gateway.destination(target.configuration)
                 if (mutableState.value.configuration.accountFingerprint() == target.configuration.accountFingerprint() && mutableState.value.uncertainTarget == target) {
                     pendingCommands.clear()
@@ -518,7 +520,7 @@ class NavigationViewModel @JvmOverloads constructor(
             return
         }
         val scooter = current.scooters.value.orEmpty().firstOrNull { it.id == target.configuration.scooterId }
-        if (current.pendingCommandLoading || current.pendingCommandForOtherAccount || (current.uncertainTarget != null && current.uncertainCheckedDestination == null) || target.configuration != config || !config.isReady || scooter == null || scooter.online != true || current.sending) {
+        if (current.pendingCommandLoading || current.pendingCommandForOtherAccount || (current.uncertainTarget != null && current.uncertainCheckedDestination == null) || target.configuration != config || !config.isReady || scooter == null || !scooter.availableForNavigation || current.sending) {
             mutableState.value = current.copy(error = if (scooter?.online == false) "This scooter is offline. Refresh or choose another scooter; your place is still here." else "Scooter or account access changed. Confirm the destination again.")
             return
         }
@@ -526,7 +528,8 @@ class NavigationViewModel @JvmOverloads constructor(
         dispatchCommand(target, expectedIncomingRequestId)
     }
 
-    private fun dispatchCommand(target: CommandTarget, incomingRequestId: Long?) {
+    private fun dispatchCommand(proposed: CommandTarget, incomingRequestId: Long?) {
+        val target = proposed.copy(requestKey = proposed.requestKey ?: java.util.UUID.randomUUID().toString())
         destinationGeneration++; destinationJob?.cancel()
         locationsGeneration++; locationsJob?.cancel()
         val requestGeneration = ++commandGeneration
@@ -549,7 +552,12 @@ class NavigationViewModel @JvmOverloads constructor(
                 }
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) {
-                val uncertain = requestStarted && (error is java.io.IOException || error is org.openapitools.client.infrastructure.ServerException)
+                if (error is NavigatorApiException && error.definitelyNotSent) {
+                    try { pendingCommands.clear(); requestStarted = false
+                    } catch (cancelled: CancellationException) { throw cancelled
+                    } catch (_: Exception) { /* Keep recovery gated if local persistence failed. */ }
+                }
+                val uncertain = requestStarted && (error is java.io.IOException || error is org.openapitools.client.infrastructure.ServerException || error is NavigatorApiException && error.code == "command_uncertain")
                 val latest = mutableState.value
                 if (requestGeneration == commandGeneration && latest.configuration.accountFingerprint() == target.configuration.accountFingerprint()) {
                     val requestIsCurrent = latest.currentIncomingRequestId == incomingRequestId

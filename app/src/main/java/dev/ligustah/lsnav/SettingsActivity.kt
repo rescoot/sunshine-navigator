@@ -89,7 +89,7 @@ class SettingsActivity : ComponentActivity() {
         configureNavigationWindow(window, dark)
         setContent {
             val settings by settingsModel.state.collectAsStateWithLifecycle()
-            NavigationTheme {
+            NavigationTheme(account = settings.account.value) {
                 androidx.compose.runtime.SideEffect {
                     androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = !dark && (settings.profile.onboardingComplete || settings.profile.configuration.isAuthenticated)
                 }

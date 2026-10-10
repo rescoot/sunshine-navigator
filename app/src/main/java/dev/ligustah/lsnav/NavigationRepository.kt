@@ -19,6 +19,8 @@ import kotlin.coroutines.resumeWithException
 interface NavigationGateway {
     val changes: Flow<DestinationChange> get() = emptyFlow()
     val personalPlacesChanges: Flow<AppConfiguration> get() = emptyFlow()
+    suspend fun account(configuration: AppConfiguration): AccountIdentity? = null
+    suspend fun navigationReceipt(target: CommandTarget): String? = null
     suspend fun scooters(configuration: AppConfiguration, forceRefresh: Boolean = false): List<ScooterSummary>
     suspend fun personalPlaces(configuration: AppConfiguration, forceRefresh: Boolean = false): PersonalPlaces = PersonalPlaces()
     suspend fun createFavorite(configuration: AppConfiguration, draft: FavoriteDraft): SavedPlace = throw UnsupportedOperationException("Favorites are unavailable")
@@ -49,6 +51,16 @@ class NavigationRepository(
     override val changes = MutableSharedFlow<DestinationChange>(extraBufferCapacity = 16)
     override val personalPlacesChanges = MutableSharedFlow<AppConfiguration>(extraBufferCapacity = 16)
 
+    override suspend fun account(configuration: AppConfiguration): AccountIdentity = request(configuration) { provider ->
+        val json = provider.json("account")
+        val avatar = json.optString("avatar_url").takeIf { it.startsWith("https://") }
+        AccountIdentity(json.getLong("id"), json.optString("name").takeUnless { it == "null" }.orEmpty(), json.getString("email"), avatar)
+    }
+
+    override suspend fun navigationReceipt(target: CommandTarget): String? = target.requestKey?.let { key ->
+        request(target.configuration) { it.json("scooters/${requireNotNull(target.configuration.scooterId)}/navigation_receipts/$key").getString("status") }
+    }
+
     override suspend fun scooters(configuration: AppConfiguration, forceRefresh: Boolean): List<ScooterSummary> = scootersMutex.withLock {
         scootersCache?.takeIf { !forceRefresh && it.account == configuration.accountKey && System.currentTimeMillis() - it.time < 30_000 }?.let { return@withLock it.value }
         val result = request(configuration) { provider -> provider.getScootersApi().listScooters().mapNotNull { scooter ->
@@ -60,7 +72,8 @@ class NavigationRepository(
                     speedClassKmh = metadata.speedClassKmh, constructionYear = metadata.constructionYear,
                     color = metadata.color, fullName = metadata.fullName
                 ) }, licensePlate = scooter.licensePlate, lastSeenAt = scooter.lastSeenAt?.toString(),
-                images = scooter.images?.let { ScooterImages(it.front, it.left, it.right) } ?: ScooterImages()
+                images = scooter.images?.let { ScooterImages(it.front, it.left, it.right) } ?: ScooterImages(),
+                canNavigate = scooter.capabilities?.navigate
             ) }
         }.distinctBy { it.id } }
         scootersCache = Cache(configuration.accountKey, result)
@@ -98,11 +111,15 @@ class NavigationRepository(
         request(configuration) { it.getNavigationApi().deleteSavedDestination(id) }
         invalidatePlaces(configuration)
     }
-    override suspend fun sendToScooter(target: CommandTarget): CommandOutcome {
+    override suspend fun sendToScooter(target: CommandTarget): CommandOutcome = commandMutex.withLock {
         require(target.configuration.isReady) { "Choose an available scooter" }
         target.place?.let { require(it.coordinates.isValid()) { "Invalid destination coordinates" } }
-        if (target.place == null) clearDestination(target.configuration) else setDestination(target.configuration, target.place)
-        return CommandOutcome.ServerAccepted(target)
+        val body = target.place?.let { org.json.JSONObject().put("latitude", it.coordinates.latitude).put("longitude", it.coordinates.longitude).put("address", it.label) }
+        val response = request(target.configuration) { it.json("scooters/${requireNotNull(target.configuration.scooterId)}/destination", if (body == null) "DELETE" else "PUT", body, target.requestKey) }
+        if (response.optString("status") !in setOf("success", "accepted")) throw IOException("Sunshine has not confirmed this request. Check its status before sending again.")
+        changes.tryEmit(DestinationChange(target.configuration))
+        invalidatePlaces(target.configuration)
+        CommandOutcome.ServerAccepted(target)
     }
 
     override suspend fun savedLocations(configuration: AppConfiguration) = request(configuration) {

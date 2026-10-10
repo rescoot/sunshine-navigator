@@ -121,6 +121,19 @@ class OAuthManager private constructor(context: Context) {
         } finally { service.dispose() }
     }
 
+    suspend fun revokeAndClear(configuration: AppConfiguration): Boolean = mutex.withLock {
+        try {
+            if (configuration.oauthSessionId == null) return@withLock true
+            val record = read()
+            if (record.optString("id") != configuration.oauthSessionId || record.optString("root") != serverRoot(configuration.baseUrl)) return@withLock false
+            val state = AuthState.jsonDeserialize(record.getJSONObject("state"))
+            withContext(NonCancellable + kotlinx.coroutines.Dispatchers.IO) {
+                revokeOAuthTokens(serverRoot(configuration.baseUrl), configuration.oauthClientId, listOfNotNull(state.refreshToken, state.accessToken))
+            }
+        } catch (_: Exception) { false
+        } finally { file.delete() }
+    }
+
     suspend fun clear() = mutex.withLock { file.delete() }
 
     companion object {
