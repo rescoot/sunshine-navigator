@@ -143,3 +143,21 @@ fun Skeleton(modifier: Modifier = Modifier) {
 fun EmptyPlaces(text: String = "Share a place from your map app, or search above.") {
     SunshineCard(Modifier.fillMaxWidth(), panel = true) { Column(Modifier.fillMaxWidth().padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) { SunMark(Modifier.size(48.dp)); Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
 }
+
+@Composable
+fun AppearingItem(index: Int, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    val animate = motionEnabled()
+    val progress = remember { Animatable(if (animate) 0f else 1f) }
+    LaunchedEffect(Unit) {
+        if (animate) { kotlinx.coroutines.delay(index * 24L); progress.animateTo(1f, tween(220, easing = SunshineEase)) }
+    }
+    Box(modifier.alpha(progress.value).offset(y = ((1 - progress.value) * 12).dp)) { content() }
+}
+
+@Composable
+fun AcceptedCheck() {
+    val animate = motionEnabled()
+    val scale = remember { Animatable(if (animate) .6f else 1f) }
+    LaunchedEffect(Unit) { if (animate) scale.animateTo(1f, spring(dampingRatio = .55f, stiffness = 400f)) }
+    Box(Modifier.scale(scale.value)) { SunshineBadge("✓ Sent", BadgeTone.Success) }
+}

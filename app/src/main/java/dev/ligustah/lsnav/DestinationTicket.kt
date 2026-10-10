@@ -51,7 +51,7 @@ fun StaticDestinationMap(coordinates: Coordinates, modifier: Modifier = Modifier
         val width = maxWidth
         mapTiles(coordinates).forEach { tile ->
             AsyncImage(model = ImageRequest.Builder(context).data("https://a.basemaps.cartocdn.com/${if (dark) "dark_all" else "light_all"}/16/${tile.x}/${tile.y}.png").crossfade(220).build(), imageLoader = loader, contentDescription = null,
-                modifier = Modifier.offset(x = width / 2 + tile.offsetX.dp, y = 70.dp + tile.offsetY.dp).requiredSize(256.dp))
+                modifier = Modifier.offset(x = width / 2 + tile.offsetX.dp, y = 70.dp + tile.offsetY.dp).wrapContentSize(Alignment.TopStart, unbounded = true).requiredSize(256.dp))
         }
         Icon(Icons.Default.LocationOn, "Destination", tint = Color(0xFF4F46E5), modifier = Modifier.align(Alignment.Center).offset(y = (-16).dp).size(40.dp))
         Box(Modifier.align(Alignment.Center).offset(y = (-20).dp).size(8.dp).background(Color.White, androidx.compose.foundation.shape.CircleShape))

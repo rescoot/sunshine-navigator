@@ -32,14 +32,14 @@ fun SharedPlacePreviewCard(text: String?, supportingText: String) {
     val preview = remember(text) { text?.takeIf(String::isNotBlank)?.let(::parseSharedPlacePreview) } ?: return
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White.copy(alpha = .12f), contentColor = androidx.compose.ui.graphics.Color.White)
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("SHARED PLACE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Text("SHARED PLACE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = androidx.compose.ui.graphics.Color(0xFFA5B4FC))
             Text(preview.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            preview.coordinates?.let { Text(it.display(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            Text(supportingText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            preview.coordinates?.let { Text(it.display(), style = MaterialTheme.typography.bodySmall, color = androidx.compose.ui.graphics.Color(0xFFA5B4FC)) }
+            Text(supportingText, style = MaterialTheme.typography.bodySmall, color = androidx.compose.ui.graphics.Color(0xFFA5B4FC))
         }
     }
 }

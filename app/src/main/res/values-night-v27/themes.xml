@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.LibrescootNavigation.Base" parent="android:Theme.Material.NoActionBar">
+    <style name="Theme.SunshineNavigator.Base" parent="android:Theme.Material.NoActionBar">
         <item name="android:colorAccent">@color/nav_primary</item>
         <item name="android:windowBackground">@color/nav_window_background</item>
         <item name="android:statusBarColor">@color/nav_window_background</item>
@@ -8,5 +8,5 @@
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
     </style>
-    <style name="Theme.LibrescootNavigation" parent="Theme.LibrescootNavigation.Base" />
+    <style name="Theme.SunshineNavigator" parent="Theme.SunshineNavigator.Base" />
 </resources>

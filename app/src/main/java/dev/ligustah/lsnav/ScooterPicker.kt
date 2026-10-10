@@ -27,7 +27,7 @@ fun ScooterPicker(scooters: List<ScooterSummary>, enabled: Boolean, defaultScoot
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             scooters.sortedBy { if (it.id == defaultScooterId) 0 else 1 }.chunked(columns).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    row.forEach { scooter -> ScooterTile(scooter, scooter.id == defaultScooterId, enabled, { onSelect(scooter) }, placeLabel, Modifier.weight(1f), selectionMode, sendingId == scooter.id, acceptedId == scooter.id, replacement?.takeIf { it.first == scooter.id }?.second, sendingId != null && sendingId != scooter.id) }
+                    row.forEach { scooter -> key(scooter.id) { AppearingItem(scooters.indexOf(scooter), Modifier.weight(1f)) { ScooterTile(scooter, scooter.id == defaultScooterId, enabled, { onSelect(scooter) }, placeLabel, Modifier.fillMaxWidth(), selectionMode, sendingId == scooter.id, acceptedId == scooter.id, replacement?.takeIf { it.first == scooter.id }?.second, sendingId != null && sendingId != scooter.id) } } }
                     repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
@@ -89,7 +89,7 @@ fun ScooterTile(scooter: ScooterSummary, isDefault: Boolean, enabled: Boolean, o
             }
             replaces?.let { SunshineBadge("Replaces: $it", BadgeTone.Warning) }
             if (sending) Text("Sending…", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
-            if (accepted) SunshineBadge("✓ Sent", BadgeTone.Success)
+            if (accepted) AcceptedCheck()
         }
         if (sending) TurboBar()
     }

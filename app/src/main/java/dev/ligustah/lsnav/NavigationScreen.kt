@@ -1,6 +1,7 @@
 package dev.ligustah.lsnav
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -22,6 +23,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NavigationScreen(
     onSettings: () -> Unit,
@@ -133,198 +135,94 @@ fun NavigationScreen(
     }
     BackHandler(destination != null) { clearPlace() }
 
-    if (visibleDestination != null) {
-        val place = visibleDestination
-        Column(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            UncertainRecovery(state, model)
-            if (state.pendingCommandLoading) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Restoring previous request status…") }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                TextButton(onClick = clearPlace) { Text("‹  Places") }
-                IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Account and settings") }
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Send place", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
-                TextButton(onClick = { model.fetchScooters(true) }, enabled = state.configuration.isAuthenticated && !state.sending) {
-                    Text("Refresh scooters")
-                }
-            }
-            Card { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(place.label, style = MaterialTheme.typography.titleLarge)
-                Text(place.coordinates.display(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Tap a scooter to send this place", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
-                if (state.incomingResolutionRequired) Text("Resolving the newest shared place. Sending is paused until it is ready.", style = MaterialTheme.typography.bodySmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = clearPlace) { Text("Choose a different place") }
-                    TextButton(onClick = {
-                        val existing = state.personalPlaces.value?.let { it.favorites + it.recent }?.firstOrNull {
-                            it.id == destinationSavedId || it.place.coordinates == place.coordinates
-                        }
-                        openFavoriteEditor(existing?.id, place, place.label)
-                    }) { Text(if (destinationSavedId == null) "Save favorite" else "Edit saved place") }
-                }
-            } }
-            if (state.configuration.isReady) {
-                state.destination.value?.place?.let { current ->
-                    Text("Current route for ${state.configuration.scooterName}: ${current.label}.",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            if (state.configuration.isAuthenticated) Text("Sending replaces any current destination on the scooter you tap.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            when {
-                !state.configuration.isAuthenticated -> RecoveryCard("Connect Sunshine to choose a scooter. This place will stay here.", "Connect Sunshine", onSettings)
-                state.configuration.needsPermissionUpgrade && state.configuration.missingOAuthScopes.contains("scooter_control") -> RecoveryCard("Reconnect and approve scooter navigation access to send a place.", "Reconnect", onSettings)
-                state.scooters.loading && state.scooters.value == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
-                state.scooters.error != null -> RecoveryCard(
-                    "${state.scooters.error}. Your place is safe.",
-                    if (state.scooterReconnectRequired) "Reconnect with Sunshine" else "Refresh scooters",
-                    if (state.scooterReconnectRequired) onSettings else { { model.fetchScooters(true) } }
-                )
-                state.scooters.value == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
-                state.scooters.value?.isEmpty() == true -> RecoveryCard("No scooters are available to this account. Check Sunshine access, then refresh.", "Refresh scooters", { model.fetchScooters(true) })
-                else -> ScooterPicker(state.scooters.value.orEmpty(), !state.sending && !state.incomingResolutionRequired && (state.uncertainTarget == null || state.uncertainCheckedDestination != null) && !state.pendingCommandLoading && !state.pendingCommandForOtherAccount, state.defaultScooterId,
-                    onSelect = { scooter ->
-                        model.selectScooter(scooter)
-                        val captured = state.configuration.copy(scooterId = scooter.id, scooterName = scooter.name)
-                        sendingTarget = CommandTarget(captured, place)
-                        model.sendToScooter(CommandTarget(captured, place), destinationContextRequestId)
-                    }, placeLabel = place.label)
-            }
-            if (state.sending) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Sending to ${sendingTarget?.configuration?.scooterName.orEmpty()}…") }
-            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            when (state.lastCommandOutcome?.takeIf { result ->
-                val target = when (result) {
-                    is CommandOutcome.ServerAccepted -> result.target
-                    is CommandOutcome.DeliveryUncertain -> result.target
-                }
-                target.configuration == state.configuration && target.place == place &&
-                    state.lastCommandIncomingRequestId == destinationContextRequestId
-            }) {
-                is CommandOutcome.ServerAccepted -> ResultCard("Request accepted", "Sunshine accepted this destination. Scooter receipt is not confirmed.") { clearPlace(); onDone() }
-                is CommandOutcome.DeliveryUncertain -> Unit
-                else -> Unit
-            }
+    var hideAccepted by remember { mutableStateOf(false) }
+    val outcome = state.lastCommandOutcome?.takeIf { result ->
+        val target = when (result) {
+            is CommandOutcome.ServerAccepted -> result.target
+            is CommandOutcome.DeliveryUncertain -> result.target
         }
-    } else {
-        Column(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            UncertainRecovery(state, model)
-            if (state.pendingCommandLoading) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Restoring previous request status…") }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                BrandHeader(Modifier.weight(1f))
-                IconButton(onClick = model::refresh, enabled = state.configuration.isAuthenticated && !state.sending) { Icon(Icons.Default.Refresh, "Refresh places and scooters") }
-                IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, "Account and settings") }
-            }
-            if (state.incomingResolutionRequired) Text("Resolving the newest shared place…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
-            if (!state.configuration.isAuthenticated) {
-                Card(shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-                    Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("Your next stop, simply.", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                        Text("Connect Sunshine to see your scooters and send a destination. Nothing is sent until you tap a scooter.")
-                        Button(onClick = onSettings, modifier = Modifier.fillMaxWidth()) { Text("Get started") }
-                    }
+        target.configuration == state.configuration && target.place == visibleDestination &&
+            state.lastCommandIncomingRequestId == destinationContextRequestId
+    }
+    val hapticView = androidx.compose.ui.platform.LocalView.current
+    LaunchedEffect(outcome, state.error) {
+        if (outcome is CommandOutcome.ServerAccepted) {
+            hapticView.performHapticFeedback(if (android.os.Build.VERSION.SDK_INT >= 30) android.view.HapticFeedbackConstants.CONFIRM else android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+        } else if (state.error != null && sendingTarget != null) {
+            hapticView.performHapticFeedback(if (android.os.Build.VERSION.SDK_INT >= 30) android.view.HapticFeedbackConstants.REJECT else android.view.HapticFeedbackConstants.LONG_PRESS)
+        }
+    }
+    val accepted = (outcome as? CommandOutcome.ServerAccepted)?.target?.takeUnless { hideAccepted }
+    val canSend = visibleDestination != null && !state.sending && !state.incomingResolutionRequired &&
+        (state.uncertainTarget == null || state.uncertainCheckedDestination != null) &&
+        !state.pendingCommandLoading && !state.pendingCommandForOtherAccount
+    val queryChanged: (String) -> Unit = { value ->
+        val correctingRequestId = incomingRequestId?.takeIf { !sharedText.isNullOrBlank() && state.currentIncomingRequestId == it }
+        model.updateQuery(value, correctingRequestId)
+        if (correctingRequestId != null) onShareConsumed()
+    }
+    val recovery: @Composable () -> Unit = {
+        UncertainRecovery(state, model)
+        if (state.pendingCommandLoading) Text("Restoring previous request status…", style = MaterialTheme.typography.bodySmall)
+    }
+    val showSend = visibleDestination != null || state.incomingResolutionRequired || (!sharedText.isNullOrBlank() && visibleResults.isNotEmpty())
+    androidx.compose.animation.AnimatedContent(showSend, transitionSpec = {
+        (androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(220, easing = SunshineEase)) { it / 16 } + androidx.compose.animation.fadeIn()) togetherWith
+            (androidx.compose.animation.slideOutHorizontally { -it / 16 } + androidx.compose.animation.fadeOut())
+    }, label = "place journey") { sendingScreen ->
+        if (sendingScreen) SendScreen(state, visibleDestination, destinationIsExternal || !sharedText.isNullOrBlank(), accepted, sendingTarget, canSend, visibleResults,
+            onCandidate = { place -> openPlace(place, null, currentSharedResults); if (currentSharedResults) onShareConsumed() },
+            onSend = { scooter ->
+                visibleDestination?.let { place ->
+                    hideAccepted = false
+                    model.selectScooter(scooter)
+                    val captured = state.configuration.copy(scooterId = scooter.id, scooterName = scooter.name)
+                    val target = CommandTarget(captured, place)
+                    sendingTarget = target
+                    model.sendToScooter(target, destinationContextRequestId)
                 }
-            } else {
-                if (state.configuration.needsPermissionUpgrade) Card { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Reconnect to finish access", style = MaterialTheme.typography.titleMedium)
-                    Text("This session is missing ${state.configuration.missingOAuthScopes.joinToString()} access. Reconnect only when you need that capability.")
-                    OutlinedButton(onClick = onSettings) { Text("Review connection") }
-                } }
-                Text("Choose a place, then tap a scooter to send it.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedTextField(value = displayedQuery, onValueChange = { value ->
-                    val correctingRequestId = incomingRequestId?.takeIf {
-                        !sharedText.isNullOrBlank() && state.currentIncomingRequestId == it
-                    }
-                    model.updateQuery(value, correctingRequestId)
-                    if (correctingRequestId != null) onShareConsumed()
-                }, label = { Text("Search or paste a map link") }, modifier = Modifier.fillMaxWidth(), enabled = !state.sending, singleLine = true)
-                if (state.searching) LinearProgressIndicator(Modifier.fillMaxWidth())
-                state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                visibleResults.forEach { place -> PlaceRow(place.label, place.coordinates.display(), onClick = {
-                    openPlace(place, null, currentSharedResults)
-                    if (currentSharedResults && !sharedText.isNullOrBlank()) onShareConsumed()
-                }) }
-
-                val personal = state.personalPlaces
-                if (personal.loading && personal.value == null) LinearProgressIndicator(Modifier.fillMaxWidth())
-                ResourceFeedback(personal.error, personal.value != null, { model.refreshPersonalPlaces(true) })
-                personal.value?.let { saved ->
-                    if (saved.favorites.isNotEmpty()) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text("Your favorites", style = MaterialTheme.typography.titleLarge)
-                        }
-                        saved.favorites.forEach { row -> LibraryRow(row, "Favorite", { openPlace(row.place, row.id, false) }, { openFavoriteEditor(row.id, row.place, row.place.label) }) }
-                    }
-                    if (saved.recent.isNotEmpty()) {
-                        Text("Recent places", style = MaterialTheme.typography.titleLarge)
-                        saved.recent.forEach { row -> LibraryRow(row, "Recent", { openPlace(row.place, row.id, false) }, null) }
-                    }
-                    if (saved.favorites.isEmpty() && saved.recent.isEmpty()) Text("Places you save and use will appear here.")
-                }
-                if (state.scooters.value.orEmpty().isNotEmpty()) {
-                    if (state.defaultScooterId != null && state.configuration.scooterId == state.defaultScooterId) {
-                        TextButton(onClick = { showBrowseVehicles = !showBrowseVehicles }) { Text(if (showBrowseVehicles) "Hide other scooters" else "Browse another scooter") }
-                    }
-                    if (showBrowseVehicles || state.defaultScooterId == null || state.configuration.scooterId != state.defaultScooterId) {
-                        Text("Browse scooter places · read-only", style = MaterialTheme.typography.titleLarge)
-                        Text("Browsing does not change your default or send a navigation request.", style = MaterialTheme.typography.bodySmall)
-                        state.scooters.value.orEmpty().forEach { scooter ->
-                            OutlinedButton(onClick = { model.selectScooter(scooter); showBrowseVehicles = false }, modifier = Modifier.fillMaxWidth(), enabled = !state.sending && state.configuration.scooterId != scooter.id) {
-                                Text("View ${scooter.name}'s places${if (scooter.id == state.defaultScooterId) " · default" else ""}")
-                            }
-                        }
-                    }
-                }
-                if (state.configuration.isReady) {
-                    Text("${state.configuration.scooterName}'s places", style = MaterialTheme.typography.titleLarge)
-                    if (state.defaultScooterId != state.configuration.scooterId) Text("Browsing only · your default is unchanged", style = MaterialTheme.typography.bodySmall)
-                    val locations = state.savedLocations
-                    ResourceFeedback(locations.error, locations.value != null, { model.refresh() })
-                    locations.value.orEmpty().forEach { place -> PlaceRow(place.label, place.coordinates.display(), { openPlace(place, null, false) }) }
-                    val destinationData = state.destination
-                    val current = destinationData.value?.place
-                    Text("Current destination", style = MaterialTheme.typography.titleLarge)
-                    if (destinationData.loading && destinationData.value == null) LinearProgressIndicator(Modifier.fillMaxWidth())
-                    ResourceFeedback(destinationData.error, destinationData.value != null, { model.refresh() })
-                    when {
-                        destinationData.value == null && destinationData.error != null -> Text("Current destination could not be checked.")
-                        destinationData.value == null && destinationData.loading -> Text("Checking current destination…")
-                        destinationData.value == null -> Text("Current destination has not been checked yet.")
-                        current == null && (destinationData.loading || destinationData.error != null) -> Text("Last successful check found no active destination.")
-                        current == null -> Text("No active destination")
-                        else -> Card { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(current.label, style = MaterialTheme.typography.titleMedium)
-                            Text(current.coordinates.display(), style = MaterialTheme.typography.bodySmall)
-                            OutlinedButton(onClick = { clearWarning = true }, enabled = !state.sending && state.uncertainTarget == null && !state.pendingCommandForOtherAccount) { Text("Cancel navigation") }
-                        } }
-                    }
-                }
+            }, onBack = { clearPlace(); if (!sharedText.isNullOrBlank()) { model.updateQuery("", incomingRequestId); onShareConsumed() }; onDone() },
+            onSettings = onSettings, onRefresh = { model.fetchScooters(true) },
+            onSave = { visibleDestination?.let { place ->
+                val existing = state.personalPlaces.value?.let { it.favorites + it.recent }?.firstOrNull { it.id == destinationSavedId || it.place.coordinates == place.coordinates }
+                openFavoriteEditor(existing?.id, place, place.label)
+            } }, onEdit = { clearPlace(); queryChanged(displayedQuery) },
+            onDone = { clearPlace(); onDone() }, onAnother = { hideAccepted = true }, recovery = recovery)
+        else HomeScreen(state, displayedQuery, visibleResults, queryChanged,
+            onOpen = { place, id -> openPlace(place, id, currentSharedResults && id == null); if (currentSharedResults && !sharedText.isNullOrBlank()) onShareConsumed() },
+            onEdit = { saved -> openFavoriteEditor(saved.id, saved.place, saved.place.label) },
+            onStar = { saved -> model.setFavorite(saved, !saved.isFavorite) },
+            onAdd = { val place = visibleResults.firstOrNull(); if (place != null) openFavoriteEditor(null, place, place.label) else queryChanged("") },
+            onSettings = onSettings, onRefresh = model::refresh, onClear = { clearWarning = true }, onChange = { showBrowseVehicles = true }, recovery = recovery)
+    }
+    if (showBrowseVehicles) ModalBottomSheet(onDismissRequest = { showBrowseVehicles = false }) {
+        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Browse scooter places", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Read-only. Your default stays the same.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            state.scooters.value.orEmpty().forEach { scooter ->
+                TextButton(onClick = { model.selectScooter(scooter); showBrowseVehicles = false }, enabled = !state.sending) { Text(scooter.name) }
             }
         }
     }
-
     visibleFavoriteDraft?.let { place ->
-        AlertDialog(onDismissRequest = { if (!state.favoriteEditor.saving) favoriteDraftPlace = null }, title = { Text(if (favoriteDraftId == null) "Save favorite" else "Edit saved place") },
-            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(favoriteLabel, { favoriteLabel = it }, label = { Text("Name") }, singleLine = true, enabled = !state.favoriteEditor.saving)
-                Text(place.coordinates.display(), style = MaterialTheme.typography.bodySmall)
-                if (favoriteDraftId != null) {
-                    TextButton(onClick = {
-                        val saved = (state.personalPlaces.value?.favorites.orEmpty() + state.personalPlaces.value?.recent.orEmpty()).firstOrNull { it.id == favoriteDraftId }
-                        if (saved != null) { model.editFavorite(saved.id, FavoriteDraft(favoriteLabel.trim(), place)); model.setFavorite(saved, !favoriteDraftIsFavorite) }
-                    }, enabled = !state.favoriteEditor.saving) { Text(if (favoriteDraftIsFavorite) "Remove from favorites" else "Add to favorites") }
-                    TextButton(onClick = {
-                        val saved = (state.personalPlaces.value?.favorites.orEmpty() + state.personalPlaces.value?.recent.orEmpty()).firstOrNull { it.id == favoriteDraftId }
-                        if (saved != null) deleteFavoritePending = saved
-                    }, enabled = !state.favoriteEditor.saving) { Text("Delete saved place") }
-                }
-                state.favoriteEditor.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                if (state.configuration.favoritePermission == PermissionCapability.UpgradeRequired) TextButton(onClick = onSettings, enabled = !state.favoriteEditor.saving) { Text("Reconnect to enable saved-place changes") }
-            } },
-            confirmButton = { TextButton(onClick = {
-                model.editFavorite(favoriteDraftId, FavoriteDraft(favoriteLabel.trim(), place))
-                model.saveFavorite()
-            }, enabled = favoriteLabel.isNotBlank() && !state.favoriteEditor.saving) { Text("Save") } },
-            dismissButton = { TextButton(onClick = { favoriteDraftPlace = null; model.editFavorite(null, null) }, enabled = !state.favoriteEditor.saving) { Text("Cancel") } })
+        ModalBottomSheet(onDismissRequest = { if (!state.favoriteEditor.saving) favoriteDraftPlace = null }) {
+            PlaceEditorContent(favoriteLabel, place, state.favoriteEditor.saving, state.favoriteEditor.error,
+                onLabel = { favoriteLabel = it }, onSave = {
+                    model.editFavorite(favoriteDraftId, FavoriteDraft(favoriteLabel.trim(), place)); model.saveFavorite()
+                }, onCancel = { favoriteDraftPlace = null; model.editFavorite(null, null) }, actions = {
+                    if (favoriteDraftId != null) {
+                        TextButton(onClick = {
+                            val saved = (state.personalPlaces.value?.favorites.orEmpty() + state.personalPlaces.value?.recent.orEmpty()).firstOrNull { it.id == favoriteDraftId }
+                            if (saved != null) { model.editFavorite(saved.id, FavoriteDraft(favoriteLabel.trim(), place)); model.setFavorite(saved, !favoriteDraftIsFavorite) }
+                        }, enabled = !state.favoriteEditor.saving) { Text(if (favoriteDraftIsFavorite) "Remove from favourites" else "Add to favourites") }
+                        TextButton(onClick = {
+                            val saved = (state.personalPlaces.value?.favorites.orEmpty() + state.personalPlaces.value?.recent.orEmpty()).firstOrNull { it.id == favoriteDraftId }
+                            if (saved != null) deleteFavoritePending = saved
+                        }, enabled = !state.favoriteEditor.saving) { Text("Delete saved place") }
+                    }
+                    if (state.configuration.favoritePermission == PermissionCapability.UpgradeRequired) TextButton(onSettings, enabled = !state.favoriteEditor.saving) { Text("Reconnect to edit favourites") }
+                })
+        }
     }
     deleteFavoritePending?.let { saved ->
         AlertDialog(onDismissRequest = { if (!state.favoriteEditor.saving) deleteFavoritePending = null },
@@ -338,56 +236,8 @@ fun NavigationScreen(
             dismissButton = { TextButton(onClick = { deleteFavoritePending = null }, enabled = !state.favoriteEditor.saving) { Text("Keep place") } })
     }
     if (clearWarning) AlertDialog(onDismissRequest = { clearWarning = false }, title = { Text("Cancel navigation?") },
-        text = { Text("This clears the current destination for ${state.configuration.scooterName}. It does not lock the scooter.") },
+        text = { Text("This clears the current destination for ${state.configuration.scooterName}. It leaves other scooter settings unchanged.") },
         confirmButton = { TextButton(onClick = { clearWarning = false; model.send(null, state.configuration, incomingRequestId) }) { Text("Cancel navigation") } },
         dismissButton = { TextButton(onClick = { clearWarning = false }) { Text("Keep destination") } })
 }
 
-@Composable
-private fun LibraryRow(place: SavedPlace, badge: String, onClick: () -> Unit, onManage: (() -> Unit)?) {
-    Card(Modifier.fillMaxWidth(), shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
-                Text(place.place.label, style = MaterialTheme.typography.titleMedium)
-                Text(place.place.coordinates.display(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(badge, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-            }
-            if (onManage != null) TextButton(onClick = onManage) { Text("Edit") }
-        }
-    }
-}
-
-@Composable
-private fun PlaceRow(title: String, detail: String, onClick: () -> Unit) {
-    Card(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) { Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.Start) {
-        Text(title, style = MaterialTheme.typography.titleMedium); Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    } }
-}
-
-@Composable
-private fun RecoveryCard(message: String, action: String, onAction: () -> Unit) {
-    Card(shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(message, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
-            Button(onClick = onAction) { Text(action) }
-        }
-    }
-}
-
-@Composable
-private fun ResultCard(title: String, message: String, onAction: () -> Unit) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium); Text(message)
-            TextButton(onClick = onAction) { Text("Done") }
-        }
-    }
-}
-
-@Composable
-private fun ResourceFeedback(error: String?, hasValue: Boolean, retry: () -> Unit) {
-    if (error != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Text(if (hasValue) "Showing saved data · $error" else error, color = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f))
-        TextButton(onClick = retry) { Text("Retry") }
-    }
-}

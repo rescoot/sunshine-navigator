@@ -107,8 +107,8 @@ fun SetupScootersScreen(state: SettingsState, onSelect: (ScooterSummary) -> Unit
             SunshineCard(Modifier.fillMaxWidth().clickable(enabled = !state.busy, onClick = onAsk), panel = true, accent = if (state.draft.scooterId == null) Color(0xFF4F46E5) else null) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { Text("▦  Ask every time", fontWeight = FontWeight.SemiBold); Text("Choose a scooter each time you send.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
-            SunshineButton(onContinue, enabled = !state.busy && state.scooters.value != null && state.scooters.error == null, modifier = Modifier.fillMaxWidth()) { Text("Continue") }
         }
+        SunshineButton(onContinue, enabled = !state.busy && state.scooters.value != null && state.scooters.error == null, modifier = Modifier.navigationBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp).fillMaxWidth()) { Text("Continue") }
     }
 }
 
