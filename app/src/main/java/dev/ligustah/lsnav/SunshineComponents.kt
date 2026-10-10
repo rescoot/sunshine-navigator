@@ -42,7 +42,7 @@ fun SunMark(modifier: Modifier = Modifier, animated: Boolean = false) {
         rotation = transition.animateFloat(0f, 360f, infiniteRepeatable(tween(40000, easing = LinearEasing)), label = "rotation").value
         scale = transition.animateFloat(1f, 1.03f, infiniteRepeatable(tween(3000, easing = SunshineEase), RepeatMode.Reverse), label = "breathing").value
     }
-    Image(painterResource(R.drawable.sun_mark), "Sunshine", modifier.rotate(rotation).scale(scale))
+    Image(painterResource(R.drawable.sunshine_logo), "Sunshine", modifier.rotate(rotation).scale(scale))
 }
 
 enum class ButtonTone { Primary, Secondary, Danger, Welcome }

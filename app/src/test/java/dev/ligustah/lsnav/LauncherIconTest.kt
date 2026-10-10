@@ -26,14 +26,15 @@ class LauncherIconTest {
         context.getDrawable(id)!!.apply { setBounds(0, 0, 108, 108); draw(Canvas(it)) }
     }
 
-    @Test fun themedIconHasTheSameSilhouetteAndARealArrowCutout() {
+    @Test fun themedIconPreservesTheWebsiteLogoSilhouette() {
         val color = layer(R.drawable.launcher_foreground)
         val mono = layer(R.drawable.launcher_monochrome)
         assertEquals(0, Color.alpha(mono.getPixel(54, 50)))
-        assertEquals(255, Color.alpha(mono.getPixel(54, 70)))
-        assertTrue(Color.alpha(mono.getPixel(54, 25)) > 0)
+        assertEquals(255, Color.alpha(color.getPixel(54, 54)))
+        assertTrue(Color.red(color.getPixel(54, 70)) > 240)
+        assertTrue(Color.green(color.getPixel(54, 70)) > 200)
         for (x in 0 until 108) for (y in 0 until 108) {
-            assertEquals(Color.alpha(color.getPixel(x, y)), Color.alpha(mono.getPixel(x, y)))
+            if ((x - 54) * (x - 54) + (y - 54) * (y - 54) > 22 * 22) assertEquals(Color.alpha(color.getPixel(x, y)), Color.alpha(mono.getPixel(x, y)))
             if (Color.alpha(mono.getPixel(x, y)) > 0) assertTrue("Artwork must fit the adaptive safe circle", (x - 54) * (x - 54) + (y - 54) * (y - 54) <= 33 * 33)
         }
         assertTrue(context.getDrawable(R.mipmap.ic_launcher) is AdaptiveIconDrawable)

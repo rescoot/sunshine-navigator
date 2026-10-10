@@ -1,18 +1,8 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
-    android:width="108dp" android:height="108dp"
-    android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#00000000" android:strokeColor="#FFD166"
-        android:strokeWidth="3" android:strokeLineCap="round"
-        android:pathData="M54,24 L54,27 M69,28.02 L67.5,30.62 M79.98,39 L77.38,40.5 M84,54 L81,54 M79.98,69 L77.38,67.5 M69,79.98 L67.5,77.38 M54,84 L54,81 M39,79.98 L40.5,77.38 M28.02,69 L30.62,67.5 M24,54 L27,54 M28.02,39 L30.62,40.5 M39,28.02 L40.5,30.62" />
-    <path android:fillType="evenOdd"
-        android:pathData="M54,32 A22,22 0,1 1,54,76 A22,22 0,1 1,54,32 Z M68,39 L58,68 L52,55 L39,49 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient android:startX="36" android:startY="32" android:endX="72" android:endY="76" android:type="linear">
-                <item android:offset="0" android:color="#FFF3A3" />
-                <item android:offset="0.5" android:color="#FFD166" />
-                <item android:offset="1" android:color="#FFAA52" />
-            </gradient>
-        </aapt:attr>
-    </path>
-</vector>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <inset android:drawable="@drawable/sunshine_logo"
+            android:insetLeft="23.09%" android:insetRight="23.09%"
+            android:insetTop="22%" android:insetBottom="22%" />
+    </item>
+    <item android:drawable="@drawable/launcher_navigation" />
+</layer-list>
