@@ -28,6 +28,10 @@ data class NavigationState(
     val favoriteMutationSequence: Long = 0,
     val sending: Boolean = false,
     val lastCommandOutcome: CommandOutcome? = null,
+    val lastCommandIncomingRequestId: Long? = null,
+    val currentIncomingRequestId: Long? = null,
+    val incomingResolutionRequired: Boolean = false,
+    val resolvedIncomingRequestId: Long? = null,
     val uncertainTarget: CommandTarget? = null,
     val uncertainCheckedDestination: NavigationTarget? = null,
     val uncertainCheckError: String? = null,
@@ -50,7 +54,10 @@ class NavigationViewModel @JvmOverloads constructor(
     private val configurations: kotlinx.coroutines.flow.Flow<AppConfiguration> = AppSettings(application).configuration,
     private val pendingCommands: PendingCommandPersistence = PendingCommandStore(application)
 ) : AndroidViewModel(application) {
-    private val mutableState = MutableStateFlow(NavigationState(favoriteMutationSequence = savedState["favoriteMutationSequence"] ?: 0L))
+    private val mutableState = MutableStateFlow(NavigationState(
+        favoriteMutationSequence = savedState["favoriteMutationSequence"] ?: 0L,
+        currentIncomingRequestId = savedState["currentIncomingRequestId"]
+    ))
     val state: StateFlow<NavigationState> = mutableState
     private var storedConfiguration: AppConfiguration? = null
     private var scootersJob: Job? = null
@@ -84,11 +91,14 @@ class NavigationViewModel @JvmOverloads constructor(
                             query = if (old?.accountKey == config.accountKey) mutableState.value.query else "",
                             results = if (old?.accountKey == config.accountKey) mutableState.value.results else emptyList(),
                             resolvedIncomingText = if (old?.accountKey == config.accountKey) mutableState.value.resolvedIncomingText else null,
+                            resolvedIncomingRequestId = if (old?.accountKey == config.accountKey) mutableState.value.resolvedIncomingRequestId else null,
+                            incomingResolutionRequired = if (old?.accountKey == config.accountKey) mutableState.value.incomingResolutionRequired else false,
                             favoriteEditor = if (old?.accountKey == config.accountKey) mutableState.value.favoriteEditor else FavoriteEditorState(),
                             scooters = if (old?.accountKey == config.accountKey) mutableState.value.scooters else RemoteData(),
                             destination = RemoteData(), savedLocations = RemoteData(),
                             personalPlaces = if (old?.accountKey == config.accountKey) mutableState.value.personalPlaces else RemoteData(),
-                            lastCommandOutcome = null, uncertainTarget = null, uncertainCheckedDestination = null,
+                            lastCommandOutcome = null, lastCommandIncomingRequestId = null,
+                            uncertainTarget = null, uncertainCheckedDestination = null,
                             uncertainCheckError = null, checkingUncertain = false,
                             pendingCommandForOtherAccount = false, pendingCommandLoading = true,
                             error = null
@@ -358,27 +368,46 @@ class NavigationViewModel @JvmOverloads constructor(
         }
     }
 
+    fun beginIncomingRequest(requestId: Long, requireResolution: Boolean = false) {
+        val current = mutableState.value
+        if (current.currentIncomingRequestId == requestId) {
+            if (requireResolution && current.resolvedIncomingRequestId != requestId && !current.incomingResolutionRequired) {
+                mutableState.value = current.copy(incomingResolutionRequired = true, results = emptyList(), resolvedIncomingText = null)
+            }
+            return
+        }
+        searchGeneration++; searchJob?.cancel()
+        savedState["currentIncomingRequestId"] = requestId
+        mutableState.value = current.copy(
+            currentIncomingRequestId = requestId, incomingResolutionRequired = true,
+            resolvedIncomingRequestId = null, resolvedIncomingText = null,
+            results = emptyList(), query = "", searching = false, error = null,
+            lastCommandOutcome = null, lastCommandIncomingRequestId = null
+        )
+    }
+
     fun updateQuery(value: String) {
         searchGeneration++
         searchJob?.cancel()
-        mutableState.value = mutableState.value.copy(query = value, results = emptyList(), searching = false)
+        mutableState.value = mutableState.value.copy(query = value, results = emptyList(), resolvedIncomingRequestId = null, searching = false)
         if (value.length < 3) return
         searchJob = viewModelScope.launch { kotlinx.coroutines.delay(500); search() }
     }
 
-    fun resolveIncoming(text: String) {
+    fun resolveIncoming(text: String, requestId: Long? = null) {
         if (text.isBlank() || text.length > MapsIntentParser.MAX_INPUT_LENGTH) return
+        if (mutableState.value.currentIncomingRequestId != requestId) return
         val generation = ++searchGeneration
         searchJob?.cancel()
-        mutableState.value = mutableState.value.copy(query = text, results = emptyList(), resolvedIncomingText = null, searching = true, error = null)
+        mutableState.value = mutableState.value.copy(query = text, results = emptyList(), resolvedIncomingText = null, resolvedIncomingRequestId = null, searching = true, error = null)
         searchJob = viewModelScope.launch {
             try {
                 val results = resolver.resolve(text)
-                if (generation == searchGeneration) mutableState.value = mutableState.value.copy(results = results, resolvedIncomingText = text,
+                if (generation == searchGeneration && mutableState.value.currentIncomingRequestId == requestId) mutableState.value = mutableState.value.copy(results = results, resolvedIncomingText = text, resolvedIncomingRequestId = requestId, incomingResolutionRequired = false,
                     error = if (results.isEmpty()) "No destination found. Choose a place with a clear destination." else null)
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) {
-                if (generation == searchGeneration) mutableState.value = mutableState.value.copy(error = userMessage(error))
+                if (generation == searchGeneration) mutableState.value = mutableState.value.copy(error = userMessage(error), resolvedIncomingRequestId = requestId, incomingResolutionRequired = false)
             } finally {
                 if (generation == searchGeneration) mutableState.value = mutableState.value.copy(searching = false)
             }
@@ -394,7 +423,7 @@ class NavigationViewModel @JvmOverloads constructor(
             mutableState.value = mutableState.value.copy(searching = true, error = null)
             try {
                 val results = resolver.search(query)
-                if (generation == searchGeneration) mutableState.value = mutableState.value.copy(results = results,
+                if (generation == searchGeneration) mutableState.value = mutableState.value.copy(results = results, resolvedIncomingRequestId = null,
                     error = if (results.isEmpty()) "No destination found. Enter an address or exact coordinates." else null)
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) {
@@ -461,23 +490,27 @@ class NavigationViewModel @JvmOverloads constructor(
         }
     }
 
-    fun sendToScooter(target: CommandTarget) {
+    fun sendToScooter(target: CommandTarget, expectedIncomingRequestId: Long? = null) {
         val current = mutableState.value
         val config = current.configuration
+        if (current.currentIncomingRequestId != expectedIncomingRequestId || current.incomingResolutionRequired) {
+            mutableState.value = current.copy(error = "A newer shared place is being resolved. Confirm its destination before sending.")
+            return
+        }
         val scooter = current.scooters.value.orEmpty().firstOrNull { it.id == target.configuration.scooterId }
         if (current.pendingCommandLoading || current.pendingCommandForOtherAccount || (current.uncertainTarget != null && current.uncertainCheckedDestination == null) || target.configuration != config || !config.isReady || scooter == null || scooter.online != true || current.sending) {
             mutableState.value = current.copy(error = if (scooter?.online == false) "This scooter is offline. Refresh or choose another scooter; your place is still here." else "Scooter or account access changed. Confirm the destination again.")
             return
         }
         if (target.place != null && !target.place.coordinates.isValid()) return
-        dispatchCommand(target)
+        dispatchCommand(target, expectedIncomingRequestId)
     }
 
-    private fun dispatchCommand(target: CommandTarget) {
+    private fun dispatchCommand(target: CommandTarget, incomingRequestId: Long?) {
         destinationGeneration++; destinationJob?.cancel()
         locationsGeneration++; locationsJob?.cancel()
         val requestGeneration = ++commandGeneration
-        mutableState.value = mutableState.value.copy(sending = true, error = null, lastCommandOutcome = null, uncertainTarget = null, uncertainCheckedDestination = null)
+        mutableState.value = mutableState.value.copy(sending = true, error = null, lastCommandOutcome = null, lastCommandIncomingRequestId = null, uncertainTarget = null, uncertainCheckedDestination = null)
         commandJob = viewModelScope.launch {
             var requestStarted = false
             try {
@@ -485,17 +518,27 @@ class NavigationViewModel @JvmOverloads constructor(
                 requestStarted = true
                 val outcome = gateway.sendToScooter(target)
                 pendingCommands.clear()
-                if (requestGeneration == commandGeneration && mutableState.value.configuration.accountFingerprint() == target.configuration.accountFingerprint()) {
-                    mutableState.value = mutableState.value.copy(lastCommandOutcome = outcome)
+                val latest = mutableState.value
+                if (requestGeneration == commandGeneration && latest.configuration.accountFingerprint() == target.configuration.accountFingerprint()) {
+                    val requestIsCurrent = latest.currentIncomingRequestId == incomingRequestId
+                    mutableState.value = latest.copy(
+                        lastCommandOutcome = outcome.takeIf { requestIsCurrent },
+                        lastCommandIncomingRequestId = incomingRequestId.takeIf { requestIsCurrent }
+                    )
                     refreshDestination(target.configuration)
                 }
             } catch (error: CancellationException) { throw error
             } catch (error: Exception) {
                 val uncertain = requestStarted && (error is java.io.IOException || error is org.openapitools.client.infrastructure.ServerException)
-                if (requestGeneration == commandGeneration && mutableState.value.configuration.accountFingerprint() == target.configuration.accountFingerprint()) {
-                    mutableState.value = mutableState.value.copy(
-                        error = if (uncertain) "The server response was interrupted. Check this scooter's destination before retrying." else userMessage(error, target.configuration),
-                        lastCommandOutcome = if (uncertain) CommandOutcome.DeliveryUncertain(target) else null,
+                val latest = mutableState.value
+                if (requestGeneration == commandGeneration && latest.configuration.accountFingerprint() == target.configuration.accountFingerprint()) {
+                    val requestIsCurrent = latest.currentIncomingRequestId == incomingRequestId
+                    mutableState.value = latest.copy(
+                        error = if (requestIsCurrent) {
+                            if (uncertain) "The server response was interrupted. Check this scooter's destination before retrying." else userMessage(error, target.configuration)
+                        } else latest.error,
+                        lastCommandOutcome = if (requestIsCurrent && uncertain) CommandOutcome.DeliveryUncertain(target) else null,
+                        lastCommandIncomingRequestId = incomingRequestId.takeIf { requestIsCurrent },
                         uncertainTarget = if (requestStarted) target else null,
                         uncertainCheckedDestination = null
                     )
@@ -506,9 +549,9 @@ class NavigationViewModel @JvmOverloads constructor(
         }
     }
 
-    fun send(place: PlaceResult?, expectedConfiguration: AppConfiguration = mutableState.value.configuration) {
+    fun send(place: PlaceResult?, expectedConfiguration: AppConfiguration = mutableState.value.configuration, expectedIncomingRequestId: Long? = null) {
         val config = mutableState.value.configuration
-        if (config != expectedConfiguration) {
+        if (config != expectedConfiguration || mutableState.value.currentIncomingRequestId != expectedIncomingRequestId || mutableState.value.incomingResolutionRequired) {
             mutableState.value = mutableState.value.copy(error = "Scooter or settings changed. Confirm the destination again.")
             return
         }
@@ -518,6 +561,6 @@ class NavigationViewModel @JvmOverloads constructor(
             return
         }
         if (place != null && !place.coordinates.isValid()) return
-        dispatchCommand(CommandTarget(config, place))
+        dispatchCommand(CommandTarget(config, place), expectedIncomingRequestId)
     }
 }

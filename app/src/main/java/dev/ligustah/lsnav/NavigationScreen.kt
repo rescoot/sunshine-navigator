@@ -27,6 +27,7 @@ fun NavigationScreen(
     onSettings: () -> Unit,
     onDone: () -> Unit = {},
     sharedText: String? = null,
+    incomingRequestId: Long? = null,
     onShareConsumed: () -> Unit = {},
     model: NavigationViewModel = viewModel()
 ) {
@@ -45,6 +46,7 @@ fun NavigationScreen(
     var destinationOwner by rememberSaveable { mutableStateOf<String?>(null) }
     var destinationIsExternal by rememberSaveable { mutableStateOf(false) }
     var destinationSavedId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var destinationContextRequestId by rememberSaveable { mutableStateOf<Long?>(null) }
     var favoriteDraftPlace by rememberSaveable(stateSaver = destinationSaver) { mutableStateOf<PlaceResult?>(null) }
     var favoriteDraftId by rememberSaveable { mutableStateOf<Long?>(null) }
     var favoriteDraftIsFavorite by rememberSaveable { mutableStateOf(false) }
@@ -56,19 +58,24 @@ fun NavigationScreen(
     var clearWarning by remember { mutableStateOf(false) }
     var sendingTarget by remember { mutableStateOf<CommandTarget?>(null) }
     val ownerFingerprint = state.configuration.accountFingerprint()
-    val visibleDestination = destination?.takeIf { destinationIsExternal || (state.configurationLoaded && destinationOwner == ownerFingerprint) }
+    val visibleDestination = destination?.takeIf {
+        destinationContextRequestId == incomingRequestId &&
+            (if (destinationIsExternal) destinationContextRequestId != null else state.configurationLoaded && destinationOwner == ownerFingerprint)
+    }
     val visibleFavoriteDraft = favoriteDraftPlace?.takeIf { state.configurationLoaded && favoriteDraftOwner == ownerFingerprint }
-    val openPlace: (PlaceResult, Long?) -> Unit = { place, savedId ->
+    val openPlace: (PlaceResult, Long?, Boolean) -> Unit = { place, savedId, external ->
         destination = place
-        destinationOwner = ownerFingerprint
-        destinationIsExternal = false
+        destinationOwner = if (external) null else ownerFingerprint
+        destinationIsExternal = external
         destinationSavedId = savedId
+        destinationContextRequestId = incomingRequestId
     }
     val clearPlace = {
         destination = null
         destinationOwner = null
         destinationIsExternal = false
         destinationSavedId = null
+        destinationContextRequestId = null
     }
     val openFavoriteEditor: (Long?, PlaceResult, String) -> Unit = { id, place, label ->
         favoriteDraftPlace = place
@@ -98,13 +105,24 @@ fun NavigationScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    LaunchedEffect(sharedText, state.sending) { if (!sharedText.isNullOrBlank() && !state.sending) model.resolveIncoming(sharedText) }
-    LaunchedEffect(state.results, state.resolvedIncomingText, sharedText) {
-        if (!sharedText.isNullOrBlank() && state.resolvedIncomingText == sharedText && state.results.size == 1) {
-            destination = state.results.single()
-            destinationOwner = null
-            destinationIsExternal = true
-            destinationSavedId = null
+    LaunchedEffect(incomingRequestId) {
+        val requestId = incomingRequestId ?: return@LaunchedEffect
+        model.beginIncomingRequest(requestId, requireResolution = !sharedText.isNullOrBlank())
+        if (destination != null && destinationContextRequestId != requestId) clearPlace()
+    }
+    LaunchedEffect(incomingRequestId, sharedText, state.sending) {
+        val requestId = incomingRequestId ?: return@LaunchedEffect
+        model.beginIncomingRequest(requestId, requireResolution = !sharedText.isNullOrBlank())
+        if (!sharedText.isNullOrBlank() && !state.sending && state.resolvedIncomingRequestId != requestId) {
+            model.resolveIncoming(sharedText, requestId)
+        }
+    }
+    val currentSharedResults = incomingRequestId != null && state.currentIncomingRequestId == incomingRequestId &&
+        state.resolvedIncomingRequestId == incomingRequestId
+    val visibleResults = if (!sharedText.isNullOrBlank() && !currentSharedResults) emptyList() else state.results
+    LaunchedEffect(state.results, state.resolvedIncomingText, state.resolvedIncomingRequestId, sharedText, incomingRequestId) {
+        if (!sharedText.isNullOrBlank() && currentSharedResults && state.resolvedIncomingText == sharedText && state.results.size == 1) {
+            openPlace(state.results.single(), null, true)
             onShareConsumed()
         }
     }
@@ -142,9 +160,9 @@ fun NavigationScreen(
                     Text("Current route for ${state.configuration.scooterName}: ${current.label}.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Text("Sending replaces any current destination on the scooter you tap.",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            if (state.configuration.isAuthenticated) Text("Sending replaces any current destination on the scooter you tap.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             when {
                 !state.configuration.isAuthenticated -> RecoveryCard("Connect Sunshine to choose a scooter. This place will stay here.", "Connect Sunshine", onSettings)
                 state.configuration.needsPermissionUpgrade && state.configuration.missingOAuthScopes.contains("scooter_control") -> RecoveryCard("Reconnect and approve scooter navigation access to send a place.", "Reconnect", onSettings)
@@ -156,7 +174,7 @@ fun NavigationScreen(
                         model.selectScooter(scooter)
                         val captured = state.configuration.copy(scooterId = scooter.id, scooterName = scooter.name)
                         sendingTarget = CommandTarget(captured, place)
-                        model.sendToScooter(CommandTarget(captured, place))
+                        model.sendToScooter(CommandTarget(captured, place), destinationContextRequestId)
                     }, placeLabel = place.label)
             }
             if (state.sending) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Sending to ${sendingTarget?.configuration?.scooterName.orEmpty()}…") }
@@ -166,7 +184,8 @@ fun NavigationScreen(
                     is CommandOutcome.ServerAccepted -> result.target
                     is CommandOutcome.DeliveryUncertain -> result.target
                 }
-                target.configuration == state.configuration && target.place == place
+                target.configuration == state.configuration && target.place == place &&
+                    state.lastCommandIncomingRequestId == destinationContextRequestId
             }) {
                 is CommandOutcome.ServerAccepted -> ResultCard("Request accepted", "Sunshine accepted this destination. Scooter receipt is not confirmed.") { clearPlace(); onDone() }
                 is CommandOutcome.DeliveryUncertain -> Unit
@@ -200,7 +219,10 @@ fun NavigationScreen(
                     modifier = Modifier.fillMaxWidth(), enabled = !state.sending, singleLine = true)
                 if (state.searching) LinearProgressIndicator(Modifier.fillMaxWidth())
                 state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                state.results.forEach { place -> PlaceRow(place.label, place.coordinates.display(), onClick = { openPlace(place, null); if (!sharedText.isNullOrBlank()) onShareConsumed() }) }
+                visibleResults.forEach { place -> PlaceRow(place.label, place.coordinates.display(), onClick = {
+                    openPlace(place, null, currentSharedResults)
+                    if (currentSharedResults && !sharedText.isNullOrBlank()) onShareConsumed()
+                }) }
 
                 val personal = state.personalPlaces
                 if (personal.loading && personal.value == null) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -210,11 +232,11 @@ fun NavigationScreen(
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Text("Your favorites", style = MaterialTheme.typography.titleLarge)
                         }
-                        saved.favorites.forEach { row -> LibraryRow(row, "Favorite", { openPlace(row.place, row.id) }, { openFavoriteEditor(row.id, row.place, row.place.label) }) }
+                        saved.favorites.forEach { row -> LibraryRow(row, "Favorite", { openPlace(row.place, row.id, false) }, { openFavoriteEditor(row.id, row.place, row.place.label) }) }
                     }
                     if (saved.recent.isNotEmpty()) {
                         Text("Recent places", style = MaterialTheme.typography.titleLarge)
-                        saved.recent.forEach { row -> LibraryRow(row, "Recent", { openPlace(row.place, row.id) }, null) }
+                        saved.recent.forEach { row -> LibraryRow(row, "Recent", { openPlace(row.place, row.id, false) }, null) }
                     }
                     if (saved.favorites.isEmpty() && saved.recent.isEmpty()) Text("Places you save and use will appear here.")
                 }
@@ -237,7 +259,7 @@ fun NavigationScreen(
                     if (state.defaultScooterId != state.configuration.scooterId) Text("Browsing only · your default is unchanged", style = MaterialTheme.typography.bodySmall)
                     val locations = state.savedLocations
                     ResourceFeedback(locations.error, locations.value != null, { model.refresh() })
-                    locations.value.orEmpty().forEach { place -> PlaceRow(place.label, place.coordinates.display(), { openPlace(place, null) }) }
+                    locations.value.orEmpty().forEach { place -> PlaceRow(place.label, place.coordinates.display(), { openPlace(place, null, false) }) }
                     val destinationData = state.destination
                     val current = destinationData.value?.place
                     Text("Current destination", style = MaterialTheme.typography.titleLarge)
@@ -297,7 +319,7 @@ fun NavigationScreen(
     }
     if (clearWarning) AlertDialog(onDismissRequest = { clearWarning = false }, title = { Text("Cancel navigation?") },
         text = { Text("This clears the current destination for ${state.configuration.scooterName}. It does not lock the scooter.") },
-        confirmButton = { TextButton(onClick = { clearWarning = false; model.send(null, state.configuration) }) { Text("Cancel navigation") } },
+        confirmButton = { TextButton(onClick = { clearWarning = false; model.send(null, state.configuration, incomingRequestId) }) { Text("Cancel navigation") } },
         dismissButton = { TextButton(onClick = { clearWarning = false }) { Text("Keep destination") } })
 }
 
