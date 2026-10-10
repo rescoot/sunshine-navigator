@@ -7,6 +7,11 @@ on:
   pull_request:
     paths: ['ios/**', '.github/workflows/ios.yml']
   workflow_dispatch:
+    inputs:
+      ui_tests:
+        description: Boot an iPhone simulator and run hosted unit and UI tests
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -18,18 +23,44 @@ concurrency:
 jobs:
   simulator:
     runs-on: macos-15
-    timeout-minutes: 35
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Identify toolchain
+        id: toolchain
+        run: |
+          xcodebuild -version
+          echo "key=$(xcodebuild -version | shasum -a 256 | cut -c1-16)" >> "$GITHUB_OUTPUT"
+      - name: Restore compiler caches
+        id: compiler-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ios/.build/
+            ios/DerivedData/ModuleCache.noindex/
+            ios/DerivedData/SDKStatCaches.noindex/
+            ios/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/
+          key: ios-v1-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('ios/Package.swift', 'ios/project.yml') }}
+      - name: Test core without booting a simulator
+        working-directory: ios
+        run: swift test --parallel
       - name: Generate Xcode project
         working-directory: ios
         run: |
           brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
           xcodegen generate
-          xcodebuild -version
+      - name: Build app and share extension
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild build -project SunshineNavigator.xcodeproj -scheme Navigator \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath DerivedData ARCHS="$(uname -m)" ONLY_ACTIVE_ARCH=YES \
+            CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM='' | tee build.log
       - name: Select an available iPhone simulator
+        if: inputs.ui_tests
         run: |
           xcrun simctl list devices available --json > /tmp/simulators.json
           python3 - <<'PY'
@@ -41,16 +72,17 @@ jobs:
           with open(os.environ['GITHUB_ENV'], 'a') as f:
               f.write('SIMULATOR_ID=' + phones[0]['udid'] + '\n')
           PY
-      - name: Build app and share extension, then run tests
+      - name: Run simulator tests (opt-in)
+        if: inputs.ui_tests
         working-directory: ios
         run: |
           set -o pipefail
           xcodebuild test -project SunshineNavigator.xcodeproj -scheme Navigator \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
             -derivedDataPath DerivedData -resultBundlePath TestResults.xcresult \
-            CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM='' \
-            | tee build.log
+            CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM='' | tee -a build.log
       - name: Package simulator app
+        if: github.event_name != 'pull_request'
         working-directory: ios
         run: |
           mkdir -p build
@@ -58,18 +90,29 @@ jobs:
           cd build
           shasum -a 256 Navigator-simulator.zip > SHA256SUMS
       - name: Upload simulator build
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ios-simulator-${{ github.sha }}
           path: ios/build/
           if-no-files-found: error
-          retention-days: 30
-      - name: Upload test results
-        if: always()
+          retention-days: 7
+      - name: Upload failure or requested simulator reports
+        if: always() && (failure() || inputs.ui_tests)
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ios-test-results-${{ github.sha }}
           path: |
             ios/build.log
             ios/TestResults.xcresult/
-          retention-days: 14
+          retention-days: 7
+      - name: Save compiler caches from trusted runs
+        if: success() && github.event_name != 'pull_request' && steps.compiler-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ios/.build/
+            ios/DerivedData/ModuleCache.noindex/
+            ios/DerivedData/SDKStatCaches.noindex/
+            ios/DerivedData/Build/Intermediates.noindex/ExplicitPrecompiledModules/
+          key: ${{ steps.compiler-cache.outputs.cache-primary-key }}
