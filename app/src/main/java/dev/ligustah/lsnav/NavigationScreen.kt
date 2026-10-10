@@ -1,6 +1,8 @@
 package dev.ligustah.lsnav
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -203,7 +205,7 @@ fun NavigationScreen(
             Text("Add favourite", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             OutlinedTextField(displayedQuery, queryChanged, placeholder = { Text("Search or paste a map link") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
             if (state.searching) TurboBar()
-            if (visibleResults.isNotEmpty()) GroupedPlaces(visibleResults, { place -> addingFavorite = false; openFavoriteEditor(null, place, place.label) }, "⌖")
+            if (visibleResults.isNotEmpty()) GroupedPlaces(visibleResults, { place -> addingFavorite = false; openFavoriteEditor(null, place, place.label) }, Icons.Default.Place)
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
     }

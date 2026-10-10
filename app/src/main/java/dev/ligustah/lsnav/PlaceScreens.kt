@@ -10,7 +10,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.*
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,29 +32,37 @@ fun HomeScreen(state: NavigationState, query: String = state.query, results: Lis
     val searchInteraction = remember { MutableInteractionSource() }
     val searchFocused by searchInteraction.collectIsFocusedAsState()
     Column(Modifier.fillMaxSize()) {
-        NavigatorBar(loading = state.networkLoading, onRefresh = onRefresh, onAccount = onSettings)
+        NavigatorBar(loading = state.networkLoading, onRefresh = onRefresh, onAccount = onSettings, hero = true)
         Box(Modifier.fillMaxWidth().height(92.dp)) {
-            Box(Modifier.fillMaxWidth().height(72.dp).background(if (MaterialTheme.colorScheme.background == Color(0xFF0F0E1F)) Indigo950 else Indigo800, RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)))
-            OutlinedTextField(query, onQuery, placeholder = { Text("Where to?") }, leadingIcon = { Icon(Icons.Default.Search, null) }, trailingIcon = { if (query.isNotEmpty()) TextButton({ onQuery("") }) { Text("×") } }, singleLine = true, enabled = !state.sending,
+            val night = MaterialTheme.colorScheme.background == Color(0xFF0F0E1F)
+            Box(Modifier.fillMaxWidth().height(74.dp).background(if (night) Indigo800 else Color(0xFF4338CA), RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)))
+            Box(Modifier.fillMaxWidth().height(72.dp).background(if (night) Indigo950 else Indigo800, RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)))
+            OutlinedTextField(query, onQuery, placeholder = { Text("Where to?") }, leadingIcon = { Icon(Icons.Default.Search, null) }, trailingIcon = { if (query.isNotEmpty()) IconButton({ onQuery("") }) { Icon(Icons.Default.Close, "Clear search", Modifier.size(22.dp)) } }, singleLine = true, enabled = !state.sending,
                 interactionSource = searchInteraction, shape = RoundedCornerShape(12.dp), colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surface, unfocusedContainerColor = MaterialTheme.colorScheme.surface, unfocusedBorderColor = Color.Transparent), modifier = Modifier.align(Alignment.BottomCenter).widthIn(max = 600.dp).fillMaxWidth().padding(horizontal = 20.dp).shadow(if (searchFocused) 6.dp else 3.dp, RoundedCornerShape(12.dp)))
         }
         Column(Modifier.weight(1f).widthIn(max = 600.dp).fillMaxWidth().align(Alignment.CenterHorizontally).imePadding().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             recovery()
-            AnimatedVisibility(results.isNotEmpty(), enter = fadeIn() + expandVertically()) { GroupedPlaces(results, onOpen = { onOpen(it, null) }, leading = "⌖") }
+            AnimatedVisibility(results.isNotEmpty(), enter = fadeIn() + expandVertically()) { GroupedPlaces(results, onOpen = { onOpen(it, null) }, leading = Icons.Default.Place) }
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (state.configuration.isReady) {
                 val scooter = state.scooters.value.orEmpty().firstOrNull { it.id == state.configuration.scooterId }
                 SunshineCard(Modifier.fillMaxWidth()) {
-                    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        if (scooter != null) Box(Modifier.size(80.dp, 64.dp)) { ScooterArt(scooter, Modifier.fillMaxSize()); StatusDot(scooter, Modifier.align(Alignment.TopEnd)) }
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("NAVIGATING TO", fontSize = 12.sp, letterSpacing = .8.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(when { state.destination.error != null -> "Couldn't check destination"; state.destination.value == null -> "Checking destination…"; state.destination.value.place == null -> "No destination set"; else -> state.destination.value.place.displayTitle() }, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                if (state.destination.error != null) TextButton(onRefresh) { Text("↻ Retry") }
-                                else if (state.destination.value?.place != null) SunshineButton(onClear, enabled = !state.sending && state.uncertainTarget == null && !state.pendingCommandForOtherAccount && !state.pendingCommandLoading, tone = ButtonTone.Secondary, modifier = Modifier.width(90.dp)) { Text("Clear") }
-                                if (state.defaultScooterId == null) TextButton(onChange, enabled = !state.sending) { Text("Change") }
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            if (scooter != null) ScooterArt(scooter, Modifier.size(64.dp, 56.dp))
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (scooter != null) StatusDot(scooter)
+                                    Text("${scooter?.name ?: state.configuration.scooterName} · Navigating to", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Text(when { state.destination.error != null -> "Couldn't check destination"; state.destination.value == null -> "Checking destination…"; state.destination.value.place == null -> "No destination set"; else -> state.destination.value.place.displayTitle() }, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                             }
+                        }
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onChange, enabled = !state.sending, contentPadding = PaddingValues(horizontal = 0.dp)) { Text("Change scooter") }
+                            Spacer(Modifier.weight(1f))
+                            if (state.destination.error != null) TextButton(onRefresh) { Icon(Icons.Default.Refresh, null, Modifier.size(20.dp)); Spacer(Modifier.width(4.dp)); Text("Retry") }
+                            else if (state.destination.value?.place != null) SunshineButton(onClear, enabled = !state.sending && state.uncertainTarget == null && !state.pendingCommandForOtherAccount && !state.pendingCommandLoading, tone = ButtonTone.Secondary, modifier = Modifier.width(80.dp)) { Text("Clear") }
                         }
                     }
                 }
@@ -58,33 +71,35 @@ fun HomeScreen(state: NavigationState, query: String = state.query, results: Lis
             val personal = state.personalPlaces.value
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                 SectionTitle("Favourites")
-                if (state.configuration.favoritePermission != PermissionCapability.UpgradeRequired) TextButton(onAdd) { Text("+ Add") }
+                if (state.configuration.favoritePermission != PermissionCapability.UpgradeRequired) TextButton(onAdd) { Icon(Icons.Default.Add, null, Modifier.size(20.dp)); Text("Add") }
             }
             if (state.configuration.favoritePermission == PermissionCapability.UpgradeRequired) {
                 Box(Modifier.clickable(onClick = onSettings)) { SunshineBadge("Reconnect to edit favourites") }
             }
             if (state.personalPlaces.loading && personal == null) Skeleton(Modifier.fillMaxWidth().height(96.dp))
             state.personalPlaces.error?.let { ProblemPanel("Couldn't load places", it, "Retry", onRefresh) }
-            if (!personal?.favorites.isNullOrEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                personal!!.favorites.forEach { saved ->
-                    SunshineCard(Modifier.width(148.dp).height(96.dp).combinedClickable(onClick = { onOpen(saved.place, saved.id) }, onLongClick = { onEdit(saved) })) {
+            if (!personal?.favorites.isNullOrEmpty()) LazyRow(contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(personal!!.favorites, key = { it.id }) { saved ->
+                    SunshineCard(Modifier.width(148.dp).heightIn(min = 132.dp).combinedClickable(onClick = { onOpen(saved.place, saved.id) }, onLongClick = { onEdit(saved) })) {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("★", color = Color(0xFFFBBF24)); Text("⋮", Modifier.clickable { onEdit(saved) }, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                            Text(saved.place.displayTitle(), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
-                            Text(saved.place.displayDetail(), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Star, null, Modifier.size(22.dp), tint = Color(0xFFFBBF24))
+                                IconButton({ onEdit(saved) }, Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, "Edit ${saved.place.label}", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            }
+                            Text(saved.place.displayTitle(), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(saved.place.displayDetail(), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
             }
             if (!personal?.recent.isNullOrEmpty()) { SectionTitle("Recent"); SunshineCard(Modifier.fillMaxWidth()) { personal!!.recent.forEachIndexed { index, saved ->
-                PlaceListRow(saved.place, "◷", { onOpen(saved.place, saved.id) }) { TextButton({ onStar(saved) }, enabled = !state.favoriteEditor.saving) { Text(if (saved.isFavorite) "★" else "☆", color = Color(0xFFFBBF24)) } }
+                PlaceListRow(saved.place, Icons.Default.Schedule, { onOpen(saved.place, saved.id) }) { IconButton({ onStar(saved) }, enabled = !state.favoriteEditor.saving, modifier = Modifier.size(48.dp)) { Icon(if (saved.isFavorite) Icons.Default.Star else Icons.Default.StarBorder, "Toggle favourite for ${saved.place.label}", Modifier.size(22.dp), tint = Color(0xFFFBBF24)) } }
                 if (index != personal.recent.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
             } } }
             if (state.configuration.isReady) {
                 SectionTitle("On the scooter")
                 state.savedLocations.error?.let { ProblemPanel("Couldn't load scooter places", it, "Retry", onRefresh) }
-                if (state.savedLocations.value.orEmpty().isNotEmpty()) GroupedPlaces(state.savedLocations.value.orEmpty(), { onOpen(it, null) }, "▱")
-                if (state.defaultScooterId != null) TextButton(onChange, enabled = !state.sending) { Text("Browse another scooter") }
+                if (state.savedLocations.value.orEmpty().isNotEmpty()) GroupedPlaces(state.savedLocations.value.orEmpty(), { onOpen(it, null) }, Icons.Default.ElectricScooter)
             }
             if (personal != null && personal.favorites.isEmpty() && personal.recent.isEmpty()) EmptyPlaces()
         }
@@ -95,16 +110,16 @@ fun HomeScreen(state: NavigationState, query: String = state.query, results: Lis
 fun SectionTitle(text: String) { Text(text.uppercase(), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = .96.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
 
 @Composable
-fun PlaceListRow(place: PlaceResult, leading: String, onOpen: () -> Unit, trailing: @Composable () -> Unit = { Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant) }) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(leading, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 22.sp)
-        Column(Modifier.weight(1f)) { Text(place.displayTitle(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold); Text(place.displayDetail(), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+fun PlaceListRow(place: PlaceResult, leading: ImageVector, onOpen: () -> Unit, trailing: @Composable () -> Unit = { Icon(Icons.Default.ChevronRight, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant) }) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).clickable(onClick = onOpen).padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Icon(leading, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.weight(1f)) { Text(place.displayTitle(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(place.displayDetail(), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         trailing()
     }
 }
 
 @Composable
-fun GroupedPlaces(places: List<PlaceResult>, onOpen: (PlaceResult) -> Unit, leading: String) { SunshineCard(Modifier.fillMaxWidth()) { places.forEachIndexed { index, place -> AppearingItem(index) { PlaceListRow(place, leading, { onOpen(place) }) }; if (index != places.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant) } } }
+fun GroupedPlaces(places: List<PlaceResult>, onOpen: (PlaceResult) -> Unit, leading: ImageVector) { SunshineCard(Modifier.fillMaxWidth()) { places.forEachIndexed { index, place -> AppearingItem(index) { PlaceListRow(place, leading, { onOpen(place) }) }; if (index != places.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant) } } }
 
 @Composable
 fun SendScreen(state: NavigationState, place: PlaceResult?, shared: Boolean = false, acceptedTarget: CommandTarget? = null, sendingTarget: CommandTarget? = null, enabled: Boolean = false, results: List<PlaceResult> = emptyList(), onCandidate: (PlaceResult) -> Unit = {}, onSend: (ScooterSummary) -> Unit = {}, onBack: () -> Unit = {}, onSettings: () -> Unit = {}, onRefresh: () -> Unit = {}, onSave: () -> Unit = {}, onEdit: () -> Unit = {}, onDone: () -> Unit = {}, onAnother: () -> Unit = {}, recovery: @Composable () -> Unit = {}) {
@@ -113,7 +128,7 @@ fun SendScreen(state: NavigationState, place: PlaceResult?, shared: Boolean = fa
         NavigatorBar("Send to scooter", state.networkLoading, onBack, onAccount = onSettings)
         Column(Modifier.weight(1f).widthIn(max = 600.dp).fillMaxWidth().align(Alignment.CenterHorizontally).navigationBarsPadding().imePadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             DestinationTicket(place, shared, state.incomingResolutionRequired && place == null, state.sending, onSave, onEdit)
-            if (place == null && results.isNotEmpty()) GroupedPlaces(results, onCandidate, "⌖")
+            if (place == null && results.isNotEmpty()) GroupedPlaces(results, onCandidate, Icons.Default.Place)
             if (place == null) TextButton(onEdit) { Text("Edit place") }
             recovery()
             if (showFailure && state.uncertainTarget == null && !state.pendingCommandForOtherAccount) state.error?.let {
@@ -121,8 +136,13 @@ fun SendScreen(state: NavigationState, place: PlaceResult?, shared: Boolean = fa
                 val reconnect = state.configuration.needsPermissionUpgrade || it.contains("login", true) || it.contains("token", true) || it.contains("Settings", true)
                 ProblemPanel(if (resolving) "Couldn't find this place" else "Couldn't send this place", it, if (resolving) "Edit place" else if (reconnect) "Reconnect" else "Choose another scooter", if (resolving) onEdit else if (reconnect) onSettings else { { showFailure = false } })
             }
-            Text("☝  Tap a scooter to send", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-            Text("Sending replaces the scooter's current destination.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Icon(Icons.Default.TouchApp, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Tap a scooter to send", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Sending replaces the scooter's current destination.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             when {
                 !state.configuration.isAuthenticated -> ProblemPanel("Connect Sunshine", "Your place will stay here.", "Connect Sunshine", onSettings, BadgeTone.Indigo)
                 state.configuration.missingOAuthScopes.contains("scooter_control") -> ProblemPanel("Scooter access needed", "Approve scooter navigation access to send a place.", "Reconnect", onSettings, BadgeTone.Warning)
@@ -143,8 +163,7 @@ fun SendScreen(state: NavigationState, place: PlaceResult?, shared: Boolean = fa
 fun AcceptedPanel(name: String, onDone: () -> Unit = {}, onAnother: () -> Unit = {}) {
     SunshineCard(Modifier.fillMaxWidth(), panel = true, accent = Color(0xFF22C55E), containerColor = if (MaterialTheme.colorScheme.background == Color(0xFF0F0E1F)) Color(0xFF162D29) else Color(0xFFF0FDF4)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            AcceptedCheck()
-            Text("Sent to $name", fontSize = 19.sp, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) { ResultIcon(); Text("Sent to $name", fontSize = 19.sp, fontWeight = FontWeight.Bold) }
             Text("Sunshine accepted the destination. Check the dashboard to confirm.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             SunshineButton(onDone) { Text("Done") }
             SunshineButton(onAnother, tone = ButtonTone.Secondary) { Text("Send to another") }

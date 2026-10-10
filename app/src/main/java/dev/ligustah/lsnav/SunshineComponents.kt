@@ -102,7 +102,7 @@ fun TurboBar(modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun NavigatorBar(title: String = "Navigator", loading: Boolean = false, onBack: (() -> Unit)? = null, onRefresh: (() -> Unit)? = null, onAccount: (() -> Unit)? = null) {
+fun NavigatorBar(title: String = "Navigator", loading: Boolean = false, onBack: (() -> Unit)? = null, onRefresh: (() -> Unit)? = null, onAccount: (() -> Unit)? = null, hero: Boolean = false) {
     val dark = MaterialTheme.colorScheme.background == Color(0xFF0F0E1F)
     Column(Modifier.fillMaxWidth().background(if (dark) Indigo950 else Indigo800).statusBarsPadding()) {
         Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -111,7 +111,7 @@ fun NavigatorBar(title: String = "Navigator", loading: Boolean = false, onBack: 
             if (onRefresh != null) IconButton(onRefresh) { Icon(Icons.Default.Refresh, "Refresh places and scooters", tint = Color.White) }
             if (onAccount != null) IconButton(onAccount) { Box(Modifier.size(32.dp).background(Color(0xFF6B7280), CircleShape), contentAlignment = Alignment.Center) { Icon(Icons.Default.Person, "Account and settings", tint = Color.White, modifier = Modifier.size(22.dp)) } }
         }
-        Box(Modifier.fillMaxWidth().height(2.dp).background(if (dark) Indigo800 else Color(0xFF4338CA)))
+        if (!hero) Box(Modifier.fillMaxWidth().height(2.dp).background(if (dark) Indigo800 else Color(0xFF4338CA)))
         if (loading) TurboBar()
     }
 }
@@ -122,7 +122,7 @@ fun ProblemPanel(title: String, body: String, action: String, onAction: () -> Un
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
             Box(Modifier.width(4.dp).fillMaxHeight().background(tone.color))
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("!  $title", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { Icon(Icons.Default.ErrorOutline, null, tint = tone.color, modifier = Modifier.size(22.dp)); Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
                 Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 SunshineButton(onAction) { Text(action) }
             }
@@ -157,9 +157,9 @@ fun AppearingItem(index: Int, modifier: Modifier = Modifier, content: @Composabl
 }
 
 @Composable
-fun AcceptedCheck() {
+fun ResultIcon(tone: BadgeTone = BadgeTone.Success) {
     val animate = motionEnabled()
     val scale = remember { Animatable(if (animate) .6f else 1f) }
     LaunchedEffect(Unit) { if (animate) scale.animateTo(1f, spring(dampingRatio = .55f, stiffness = 400f)) }
-    Box(Modifier.scale(scale.value)) { SunshineBadge("✓ Sent", BadgeTone.Success) }
+    Icon(when (tone) { BadgeTone.Success -> Icons.Default.CheckCircle; BadgeTone.Warning -> Icons.Default.Help; else -> Icons.Default.Error }, null, Modifier.size(28.dp).scale(scale.value), tint = when (tone) { BadgeTone.Success -> Color(0xFF22C55E); BadgeTone.Warning -> Color(0xFFEAB308); else -> Color(0xFFEF4444) })
 }

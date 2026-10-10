@@ -5,7 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -14,7 +14,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 import coil.ImageLoader
@@ -66,16 +66,17 @@ fun StaticDestinationMap(coordinates: Coordinates, modifier: Modifier = Modifier
 fun DestinationTicket(place: PlaceResult?, shared: Boolean = false, loading: Boolean = false, active: Boolean = false, onSave: () -> Unit = {}, onEdit: () -> Unit = {}) {
     SunshineCard(Modifier.fillMaxWidth(), panel = true, accent = if (active) Color(0xFF818CF8) else null, elevated = true) {
         if (place != null) StaticDestinationMap(place.coordinates) else Skeleton(Modifier.fillMaxWidth().height(140.dp))
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (loading) { Skeleton(Modifier.fillMaxWidth(.65f).height(22.dp)); Text("Finding this place…", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             else if (place != null) {
                 Text(place.displayTitle(), fontSize = 19.sp, fontWeight = FontWeight.Bold)
                 if (place.label.contains(", ")) Text(place.displayDetail(), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
-                Text(place.coordinates.display(), fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (shared) SunshineBadge("Shared place")
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TextButton(onSave) { Text("☆ Save") }
-                    TextButton(onEdit) { Text("Edit") }
+                Text(place.coordinates.display(), fontSize = 12.sp, style = TextStyle(fontFeatureSettings = "tnum"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    if (shared) SunshineBadge("Shared place")
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onSave, contentPadding = PaddingValues(horizontal = 8.dp)) { Icon(Icons.Default.StarBorder, null, Modifier.size(20.dp)); Spacer(Modifier.width(4.dp)); Text("Save") }
+                    TextButton(onEdit, contentPadding = PaddingValues(horizontal = 8.dp)) { Icon(Icons.Default.Edit, null, Modifier.size(20.dp)); Spacer(Modifier.width(4.dp)); Text("Edit") }
                 }
             }
         }
