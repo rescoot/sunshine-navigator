@@ -1,4 +1,7 @@
 import XCTest
+#if canImport(UIKit)
+import UIKit
+#endif
 #if canImport(NavigatorCore)
 @testable import NavigatorCore
 #else
@@ -6,6 +9,13 @@ import XCTest
 #endif
 
 final class NavigatorTests: XCTestCase {
+    #if canImport(UIKit)
+    @MainActor func testBundledArtworkAndTypeface() async {
+        XCTAssertNotNil(UIImage(named: "sunshine_logo"))
+        XCTAssertNotNil(UIImage(named: "scooter"))
+        XCTAssertNotNil(UIFont(name: "GL-Nummernschild-Eng", size: 20))
+    }
+    #endif
     func testCoordinateBounds() {
         XCTAssertTrue(Coordinate(latitude: 0, longitude: 0).isValid)
         XCTAssertTrue(Coordinate(latitude: 90, longitude: -180).isValid)

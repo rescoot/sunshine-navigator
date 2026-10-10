@@ -5,6 +5,7 @@ final class NavigatorUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         XCTAssertTrue(app.buttons["sign-in"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.images["Sunshine"].exists)
         app.buttons["Connection settings"].tap()
         XCTAssertTrue(app.textFields["server"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.textFields["server"].value as? String, "https://sunshine.rescoot.org")

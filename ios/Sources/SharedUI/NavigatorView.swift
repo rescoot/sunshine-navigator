@@ -45,7 +45,7 @@ struct NavigatorView: View {
     private var welcome: some View {
         ScrollView {
             VStack(spacing: 24) {
-                Image("sunshine_logo").resizable().scaledToFit().frame(width: 90, height: 94).padding(.top, 32)
+                Image("sunshine_logo").resizable().scaledToFit().accessibilityLabel("Sunshine").frame(width: 90, height: 94).padding(.top, 32)
                 Text("Your next stop, on your scooter.").font(.largeTitle.bold()).multilineTextAlignment(.center)
                 Text("Choose a place, then tap a connected scooter to send it.").foregroundStyle(.secondary).multilineTextAlignment(.center)
                 if let signIn {
