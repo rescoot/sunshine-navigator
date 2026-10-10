@@ -13,8 +13,8 @@ android {
         applicationId = "dev.ligustah.lsnav"
         minSdk = 26
         targetSdk = 36
-        versionCode = 13
-        versionName = "2.1.2"
+        versionCode = 14
+        versionName = "2.1.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["appAuthRedirectScheme"] = "dev.ligustah.lsnav"
 
