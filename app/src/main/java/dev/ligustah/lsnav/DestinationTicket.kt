@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -16,6 +17,8 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import coil.size.Precision
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
@@ -30,14 +33,33 @@ val LocalArtworkLoader = staticCompositionLocalOf<ImageLoader?> { null }
 internal fun PlaceResult.displayTitle() = if (needsLabel()) "Pinned location" else label.substringBefore(", ")
 internal fun PlaceResult.displayDetail() = if (!needsLabel() && label.contains(", ")) label.substringAfter(", ") else coordinates.display()
 
-internal data class MapTile(val x: Int, val y: Int, val offsetX: Double, val offsetY: Double)
-internal fun mapTiles(coordinates: Coordinates): List<MapTile> {
-    val n = 65536.0
+internal data class MapTile(val x: Int, val y: Int, val zoom: Int, val left: Int, val top: Int, val right: Int, val bottom: Int) {
+    val url get() = "https://tile.openstreetmap.org/$zoom/$x/$y.png"
+}
+
+internal fun mapTiles(coordinates: Coordinates, widthDp: Double, heightDp: Double, density: Double): List<MapTile> {
+    require(coordinates.isValid() && widthDp.isFinite() && heightDp.isFinite() && density.isFinite() && density > 0)
+    if (widthDp <= 0 || heightDp <= 0) return emptyList()
+    // Higher zoom tiles retain the same ground extent without enlarging source pixels.
+    val zoom = 16 + ceil(log2(density.coerceAtLeast(1.0))).toInt().coerceAtMost(3)
+    val n = 1 shl zoom
+    val tilePixels = 256.0 * density / (1 shl (zoom - 16))
+    val width = widthDp * density
+    val height = heightDp * density
     val x = (coordinates.longitude + 180) / 360 * n
     val latitude = coordinates.latitude.coerceIn(-85.05112878, 85.05112878) * PI / 180
-    val y = ((1 - ln(tan(latitude) + 1 / cos(latitude)) / PI) / 2 * n).coerceIn(0.0, n)
-    val firstY = floor(y - .5).toInt().coerceIn(0, 65534)
-    return (firstY..firstY + 1).flatMap { ty -> (floor(x).toInt() - 1..floor(x).toInt() + 1).map { tx -> MapTile((tx % 65536 + 65536) % 65536, ty, (tx - x) * 256, (ty - y) * 256) } }
+    val y = ((1 - ln(tan(latitude) + 1 / cos(latitude)) / PI) / 2 * n).coerceIn(0.0, n.toDouble())
+    val firstX = floor(x - width / (2 * tilePixels)).toInt()
+    val lastX = ceil(x + width / (2 * tilePixels)).toInt() - 1
+    val firstY = floor(y - height / (2 * tilePixels)).toInt().coerceAtLeast(0)
+    val lastY = (ceil(y + height / (2 * tilePixels)).toInt() - 1).coerceAtMost(n - 1)
+    return (firstY..lastY).flatMap { ty -> (firstX..lastX).map { tx ->
+        MapTile(Math.floorMod(tx, n), ty, zoom,
+            (width / 2 + (tx - x) * tilePixels).roundToInt(),
+            (height / 2 + (ty - y) * tilePixels).roundToInt(),
+            (width / 2 + (tx + 1 - x) * tilePixels).roundToInt(),
+            (height / 2 + (ty + 1 - y) * tilePixels).roundToInt())
+    } }
 }
 
 @Composable
@@ -54,13 +76,17 @@ fun StaticDestinationMap(coordinates: Coordinates, modifier: Modifier = Modifier
             for (x in 0..(size.width / grid).toInt()) drawLine(Color.Gray.copy(alpha = .1f), Offset(x * grid, 0f), Offset(x * grid, size.height))
             for (y in 0..(size.height / grid).toInt()) drawLine(Color.Gray.copy(alpha = .1f), Offset(0f, y * grid), Offset(size.width, y * grid))
         }
-        val width = maxWidth
-        mapTiles(coordinates).forEach { tile ->
+        val density = LocalDensity.current
+        val tiles = remember(coordinates, maxWidth, maxHeight, density.density) {
+            mapTiles(coordinates, maxWidth.value.toDouble(), maxHeight.value.toDouble(), density.density.toDouble())
+        }
+        tiles.forEach { tile ->
             // OSM tile policy requires an identifying User-Agent.
-            AsyncImage(model = ImageRequest.Builder(context).data("https://tile.openstreetmap.org/16/${tile.x}/${tile.y}.png")
+            AsyncImage(model = ImageRequest.Builder(context).data(tile.url).size(256, 256).precision(Precision.EXACT)
                 .addHeader("User-Agent", "SunshineNavigator/${BuildConfig.VERSION_NAME} (+https://sunshine.rescoot.org)").crossfade(220).build(),
                 imageLoader = loader, contentDescription = null, colorFilter = tileFilter,
-                modifier = Modifier.offset(x = width / 2 + tile.offsetX.dp, y = 70.dp + tile.offsetY.dp).wrapContentSize(Alignment.TopStart, unbounded = true).requiredSize(256.dp))
+                modifier = Modifier.align(AbsoluteAlignment.TopLeft).absoluteOffset { IntOffset(tile.left, tile.top) }.wrapContentSize(Alignment.TopStart, unbounded = true)
+                    .requiredSize(with(density) { (tile.right - tile.left).toDp() }, with(density) { (tile.bottom - tile.top).toDp() }))
         }
         Icon(Icons.Default.LocationOn, "Destination", tint = Color(0xFF4F46E5), modifier = Modifier.align(Alignment.Center).offset(y = (-16).dp).size(40.dp))
         Box(Modifier.align(Alignment.Center).offset(y = (-20).dp).size(8.dp).background(Color.White, androidx.compose.foundation.shape.CircleShape))
