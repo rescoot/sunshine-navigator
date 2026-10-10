@@ -161,5 +161,5 @@ fun ResultIcon(tone: BadgeTone = BadgeTone.Success) {
     val animate = motionEnabled()
     val scale = remember { Animatable(if (animate) .6f else 1f) }
     LaunchedEffect(Unit) { if (animate) scale.animateTo(1f, spring(dampingRatio = .55f, stiffness = 400f)) }
-    Icon(when (tone) { BadgeTone.Success -> Icons.Default.CheckCircle; BadgeTone.Warning -> Icons.Default.Help; else -> Icons.Default.Error }, null, Modifier.size(28.dp).scale(scale.value), tint = when (tone) { BadgeTone.Success -> Color(0xFF22C55E); BadgeTone.Warning -> Color(0xFFEAB308); else -> Color(0xFFEF4444) })
+    Icon(when (tone) { BadgeTone.Success -> Icons.Default.CheckCircle; BadgeTone.Warning -> Icons.Default.Help; else -> Icons.Default.Error }, null, Modifier.size(24.dp).scale(scale.value), tint = when (tone) { BadgeTone.Success -> Color(0xFF22C55E); BadgeTone.Warning -> Color(0xFFEAB308); else -> Color(0xFFEF4444) })
 }
