@@ -63,7 +63,7 @@ fun SettingsScreen(model: SettingsViewModel = viewModel(), onSignIn: (String, St
         AccountScreen(state, onBack, model::select, model::chooseOnDemand, model::save, login, { advanced = true }, model::signOut, { model.fetch(true); model.fetchAccount() })
     }
     if (advanced) SunshineSheet(onDismissRequest = { advanced = false }) {
-        Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Connection", fontSize = 20.sp, fontWeight = FontWeight.Bold)
             ConnectionFields(state, model, if (authenticated && state.profile.configuration.oauthSessionId != null) login else null)
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
