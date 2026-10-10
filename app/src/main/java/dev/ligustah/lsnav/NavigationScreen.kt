@@ -156,7 +156,7 @@ fun NavigationScreen(
         if (correctingRequestId != null) onShareConsumed()
     }
     val recovery: @Composable () -> Unit = {
-        UncertainRecovery(state, model)
+        UncertainRecovery(state, model, onSettings)
         if (state.pendingCommandLoading) Text("Restoring previous request status…", style = MaterialTheme.typography.bodySmall)
     }
     val showSend = visibleDestination != null || state.incomingResolutionRequired || (!sharedText.isNullOrBlank() && visibleResults.isNotEmpty())

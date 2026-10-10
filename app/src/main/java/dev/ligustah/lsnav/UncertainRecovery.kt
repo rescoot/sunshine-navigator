@@ -17,11 +17,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 @Composable
-internal fun UncertainRecovery(state: NavigationState, model: NavigationViewModel) {
+internal fun UncertainRecovery(state: NavigationState, model: NavigationViewModel, onReconnect: () -> Unit = {}) {
     val target = state.uncertainTarget
     if (target == null && !state.pendingCommandForOtherAccount) return
     var confirmAcknowledgement by remember { mutableStateOf(false) }
-    UncertainPanel(state, model::checkUncertainCommand, model::dismissCheckedUncertainCommand, { confirmAcknowledgement = true })
+    UncertainPanel(state, model::checkUncertainCommand, model::dismissCheckedUncertainCommand, { confirmAcknowledgement = true }, onReconnect)
     if (confirmAcknowledgement) AlertDialog(
         onDismissRequest = { confirmAcknowledgement = false },
         title = { Text("Confirm destination check") },
@@ -32,11 +32,17 @@ internal fun UncertainRecovery(state: NavigationState, model: NavigationViewMode
 }
 
 @Composable
-fun UncertainPanel(state: NavigationState, onCheck: () -> Unit = {}, onDismissChecked: () -> Unit = {}, onAcknowledge: () -> Unit = {}) {
+fun UncertainPanel(state: NavigationState, onCheck: () -> Unit = {}, onDismissChecked: () -> Unit = {}, onAcknowledge: () -> Unit = {}, onReconnect: () -> Unit = {}) {
     val target = state.uncertainTarget
-    SunshineCard(panel = true, accent = androidx.compose.ui.graphics.Color(0xFFEAB308)) {
+    val rejected = target != null && state.error != null && state.lastCommandOutcome !is CommandOutcome.DeliveryUncertain
+    val reconnect = rejected && state.configuration.oauthSessionId != null &&
+        (state.configuration.needsPermissionUpgrade || listOf("login", "token", "permission", "reconnect").any { state.error!!.contains(it, true) })
+    val dark = MaterialTheme.colorScheme.background == androidx.compose.ui.graphics.Color(0xFF0F0E1F)
+    val panelColor = androidx.compose.ui.graphics.Color(if (rejected) { if (dark) 0xFF331E2B else 0xFFFEF2F2 } else { if (dark) 0xFF29251F else 0xFFFEFCE8 })
+    SunshineCard(panel = true, accent = if (rejected) androidx.compose.ui.graphics.Color(0xFFEF4444) else androidx.compose.ui.graphics.Color(0xFFEAB308), containerColor = panelColor) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Not sure it arrived", style = MaterialTheme.typography.titleMedium)
+            Text(if (rejected) "Couldn't send to ${target!!.configuration.scooterName}" else "Not sure it arrived", style = MaterialTheme.typography.titleMedium)
+            if (rejected) Text(state.error!!, color = MaterialTheme.colorScheme.error)
             val checked = state.uncertainCheckedDestination
             when {
                 checked != null -> {
@@ -46,6 +52,7 @@ fun UncertainPanel(state: NavigationState, onCheck: () -> Unit = {}, onDismissCh
                     TextButton(onClick = onDismissChecked) { Text("Done checking") }
                 }
                 target == null -> Text("A previous request could not be verified with this connection. Reconnect the original connection to check it, or verify the scooter's destination in Sunshine before acknowledging this request.")
+                rejected -> Text("Check ${target.configuration.scooterName}'s destination before sending another request.", style = MaterialTheme.typography.bodySmall)
                 else -> Text("${target.configuration.scooterName} may or may not have applied ${target.place?.label ?: "the navigation cancellation"}. Check its current destination before sending another request.")
             }
             state.uncertainCheckError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -54,6 +61,7 @@ fun UncertainPanel(state: NavigationState, onCheck: () -> Unit = {}, onDismissCh
                     Text(if (state.checkingUncertain) "Checking destination…" else "Check scooter")
                 }
             }
+            if (reconnect) TextButton(onClick = onReconnect, enabled = !state.checkingUncertain && !state.pendingCommandLoading) { Text("Reconnect") }
             TextButton(onClick = onAcknowledge, enabled = !state.checkingUncertain && !state.pendingCommandLoading) {
                 Text("I'll check myself")
             }

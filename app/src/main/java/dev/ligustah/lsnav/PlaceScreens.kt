@@ -3,6 +3,9 @@ package dev.ligustah.lsnav
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -21,12 +24,14 @@ internal val NavigationState.networkLoading: Boolean get() = searching || sendin
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(state: NavigationState, query: String = state.query, results: List<PlaceResult> = state.results, onQuery: (String) -> Unit = {}, onOpen: (PlaceResult, Long?) -> Unit = { _, _ -> }, onEdit: (SavedPlace) -> Unit = {}, onStar: (SavedPlace) -> Unit = {}, onAdd: () -> Unit = {}, onSettings: () -> Unit = {}, onRefresh: () -> Unit = {}, onClear: () -> Unit = {}, onChange: () -> Unit = {}, recovery: @Composable () -> Unit = {}) {
+    val searchInteraction = remember { MutableInteractionSource() }
+    val searchFocused by searchInteraction.collectIsFocusedAsState()
     Column(Modifier.fillMaxSize()) {
         NavigatorBar(loading = state.networkLoading, onRefresh = onRefresh, onAccount = onSettings)
         Box(Modifier.fillMaxWidth().height(92.dp)) {
             Box(Modifier.fillMaxWidth().height(72.dp).background(if (MaterialTheme.colorScheme.background == Color(0xFF0F0E1F)) Indigo950 else Indigo800, RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)))
             OutlinedTextField(query, onQuery, placeholder = { Text("Where to?") }, leadingIcon = { Icon(Icons.Default.Search, null) }, trailingIcon = { if (query.isNotEmpty()) TextButton({ onQuery("") }) { Text("×") } }, singleLine = true, enabled = !state.sending,
-                shape = RoundedCornerShape(12.dp), colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surface, unfocusedContainerColor = MaterialTheme.colorScheme.surface, unfocusedBorderColor = Color.Transparent), modifier = Modifier.align(Alignment.BottomCenter).widthIn(max = 600.dp).fillMaxWidth().padding(horizontal = 20.dp))
+                interactionSource = searchInteraction, shape = RoundedCornerShape(12.dp), colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surface, unfocusedContainerColor = MaterialTheme.colorScheme.surface, unfocusedBorderColor = Color.Transparent), modifier = Modifier.align(Alignment.BottomCenter).widthIn(max = 600.dp).fillMaxWidth().padding(horizontal = 20.dp).shadow(if (searchFocused) 6.dp else 3.dp, RoundedCornerShape(12.dp)))
         }
         Column(Modifier.weight(1f).widthIn(max = 600.dp).fillMaxWidth().align(Alignment.CenterHorizontally).imePadding().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             recovery()
@@ -136,7 +141,7 @@ fun SendScreen(state: NavigationState, place: PlaceResult?, shared: Boolean = fa
 
 @Composable
 fun AcceptedPanel(name: String, onDone: () -> Unit = {}, onAnother: () -> Unit = {}) {
-    SunshineCard(Modifier.fillMaxWidth(), panel = true, accent = Color(0xFF22C55E)) {
+    SunshineCard(Modifier.fillMaxWidth(), panel = true, accent = Color(0xFF22C55E), containerColor = if (MaterialTheme.colorScheme.background == Color(0xFF0F0E1F)) Color(0xFF162D29) else Color(0xFFF0FDF4)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             AcceptedCheck()
             Text("Sent to $name", fontSize = 19.sp, fontWeight = FontWeight.Bold)

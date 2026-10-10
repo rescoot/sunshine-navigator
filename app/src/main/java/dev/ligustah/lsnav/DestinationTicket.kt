@@ -64,7 +64,7 @@ fun StaticDestinationMap(coordinates: Coordinates, modifier: Modifier = Modifier
 
 @Composable
 fun DestinationTicket(place: PlaceResult?, shared: Boolean = false, loading: Boolean = false, active: Boolean = false, onSave: () -> Unit = {}, onEdit: () -> Unit = {}) {
-    SunshineCard(Modifier.fillMaxWidth(), panel = true, accent = if (active) Color(0xFF818CF8) else null) {
+    SunshineCard(Modifier.fillMaxWidth(), panel = true, accent = if (active) Color(0xFF818CF8) else null, elevated = true) {
         if (place != null) StaticDestinationMap(place.coordinates) else Skeleton(Modifier.fillMaxWidth().height(140.dp))
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (loading) { Skeleton(Modifier.fillMaxWidth(.65f).height(22.dp)); Text("Finding this place…", color = MaterialTheme.colorScheme.onSurfaceVariant) }

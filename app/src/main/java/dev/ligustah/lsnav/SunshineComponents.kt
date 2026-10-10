@@ -62,7 +62,7 @@ fun SunshineButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: 
     val border = when (tone) { ButtonTone.Danger -> Color(0xFF991B1B); ButtonTone.Secondary -> Color(0xFF9CA3AF); ButtonTone.Welcome -> Indigo950.copy(alpha = .4f); else -> Indigo800 }
     val foreground = when (tone) { ButtonTone.Welcome -> Indigo800; ButtonTone.Secondary -> MaterialTheme.colorScheme.onSurface; else -> Color.White }
     Box(modifier.heightIn(min = 48.dp).border(if (focused) 2.dp else if (tone == ButtonTone.Secondary) 1.dp else 0.dp, if (focused) Color(0xFF818CF8) else if (tone == ButtonTone.Secondary) Color(0xFFD1D5DB) else Color.Transparent, RoundedCornerShape(6.dp)).offset(y = down.dp).alpha(if (enabled) 1f else .5f).shadow(if (pressed) 0.dp else 2.dp, RoundedCornerShape(6.dp)).clip(RoundedCornerShape(6.dp)).background(border)
-        .clickable(interactionSource = interaction, indication = LocalIndication.current, enabled = enabled, role = Role.Button, onClick = onClick).padding(bottom = (4 - 2 * down).dp)) {
+        .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick).padding(bottom = (4 - 2 * down).dp)) {
         CompositionLocalProvider(LocalContentColor provides foreground, LocalTextStyle provides MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.SemiBold)) {
             Row(Modifier.fillMaxWidth().background(Brush.verticalGradient(colors)).padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically, content = content)
         }
@@ -70,11 +70,11 @@ fun SunshineButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: 
 }
 
 @Composable
-fun SunshineCard(modifier: Modifier = Modifier, panel: Boolean = false, accent: Color? = null, content: @Composable ColumnScope.() -> Unit) {
+fun SunshineCard(modifier: Modifier = Modifier, panel: Boolean = false, accent: Color? = null, containerColor: Color? = null, elevated: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
     val dark = MaterialTheme.colorScheme.background == Color(0xFF0F0E1F)
-    Surface(modifier, shape = RoundedCornerShape(if (panel) 12.dp else 8.dp), color = MaterialTheme.colorScheme.surface,
+    Surface(modifier, shape = RoundedCornerShape(if (panel) 12.dp else 8.dp), color = containerColor ?: MaterialTheme.colorScheme.surface,
         border = if (accent != null || panel || dark) BorderStroke(if (accent != null) 2.dp else 1.dp, accent ?: if (dark) Color.White.copy(alpha = .06f) else Color(0xFFE5E7EB)) else null,
-        shadowElevation = if (dark) 0.dp else if (panel) 1.dp else 4.dp) { Column(content = content) }
+        shadowElevation = if (dark) 0.dp else if (panel && !elevated) 1.dp else 4.dp) { Column(content = content) }
 }
 
 enum class BadgeTone(val color: Color) { Success(Color(0xFF15803D)), Info(Color(0xFF1D4ED8)), Warning(Color(0xFFA16207)), Error(Color(0xFFB91C1C)), Neutral(Color(0xFF6B7280)), Indigo(Color(0xFF4338CA)) }

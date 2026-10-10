@@ -4,6 +4,8 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -41,17 +43,18 @@ fun SettingsScreen(model: SettingsViewModel = viewModel(), onSignIn: (String, St
         }
     }
     val login = { if (model.beginLogin()) onSignIn(state.draft.baseUrl, state.draft.oauthClientId) }
+    BackHandler(onboarding && ready) { ready = false }
     if (onboarding) {
         val step = if (!authenticated) 0 else if (ready) 2 else 1
         AnimatedContent(step, transitionSpec = { (slideInHorizontally(tween(220, easing = SunshineEase)) { it / 16 } + fadeIn(tween(220))) togetherWith (slideOutHorizontally(tween(220)) { -it / 16 } + fadeOut(tween(220))) }, label = "setup") { current ->
             when (current) {
                 0 -> WelcomeScreen(sharedText, state.busy, state.error, login, { advanced = true })
                 1 -> SetupScootersScreen(state, model::select, model::chooseOnDemand, { ready = true }, { model.fetch(true) }, login)
-                else -> ReadyScreen { model.save() }
+                else -> ReadyScreen(state.busy, state.error, { ready = false }, model::save)
             }
         }
     } else {
-        AccountScreen(state, onBack, model::select, model::chooseOnDemand, model::save, login, { advanced = true }, model::signOut)
+        AccountScreen(state, onBack, model::select, model::chooseOnDemand, model::save, login, { advanced = true }, model::signOut, { model.fetch(true) })
     }
     if (advanced) ModalBottomSheet(onDismissRequest = { advanced = false }) {
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -113,9 +116,9 @@ fun SetupScootersScreen(state: SettingsState, onSelect: (ScooterSummary) -> Unit
 }
 
 @Composable
-fun ReadyScreen(onStart: () -> Unit = {}) {
+fun ReadyScreen(busy: Boolean = false, error: String? = null, onBack: (() -> Unit)? = null, onStart: () -> Unit = {}) {
     Column(Modifier.fillMaxSize()) {
-        NavigatorBar()
+        NavigatorBar(loading = busy, onBack = onBack)
         Column(Modifier.fillMaxSize().navigationBarsPadding().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             StepDots(2, Modifier.padding(top = 12.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -124,22 +127,28 @@ fun ReadyScreen(onStart: () -> Unit = {}) {
                 Text("You're set", fontSize = 28.sp, fontWeight = FontWeight.Bold)
                 Text("In Google Maps or any map app, tap Share → Send to scooter. Or search right here.", Modifier.padding(top = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
-            SunshineButton(onStart, Modifier.fillMaxWidth()) { Text("Start navigating") }
+            error?.let { Text(it, Modifier.padding(bottom = 12.dp), color = MaterialTheme.colorScheme.error) }
+            SunshineButton(onStart, Modifier.fillMaxWidth(), enabled = !busy) { Text("Start navigating") }
         }
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun AccountScreen(state: SettingsState, onBack: () -> Unit = {}, onSelect: (ScooterSummary) -> Unit = {}, onAsk: () -> Unit = {}, onSave: () -> Unit = {}, onReconnect: () -> Unit = {}, onConnection: () -> Unit = {}, onSignOut: () -> Unit = {}) {
+fun AccountScreen(state: SettingsState, onBack: () -> Unit = {}, onSelect: (ScooterSummary) -> Unit = {}, onAsk: () -> Unit = {}, onSave: () -> Unit = {}, onReconnect: () -> Unit = {}, onConnection: () -> Unit = {}, onSignOut: () -> Unit = {}, onRefresh: () -> Unit = {}) {
     val configuration = state.profile.configuration
     Column(Modifier.fillMaxSize()) {
         NavigatorBar("Account", state.busy || state.scooters.loading, onBack)
         Column(Modifier.widthIn(max = 600.dp).fillMaxWidth().align(Alignment.CenterHorizontally).navigationBarsPadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             SunshineCard(panel = true) { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Account", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                Text(Uri.parse(configuration.baseUrl).host ?: configuration.baseUrl, fontWeight = FontWeight.SemiBold)
-                Text(if (configuration.oauthSessionId != null) "Sunshine sign-in" else "API token", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Box(Modifier.size(40.dp).background(Color(0xFF6B7280), CircleShape), contentAlignment = Alignment.Center) { Text("S", color = Color.White, fontWeight = FontWeight.Bold) }
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(Uri.parse(configuration.baseUrl).host ?: configuration.baseUrl, fontWeight = FontWeight.SemiBold)
+                        Text(if (configuration.oauthSessionId != null) "Sunshine sign-in" else "API token", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (configuration.canRead) SunshineBadge("Read", BadgeTone.Success)
                     if (configuration.canManageFavorites) SunshineBadge("Favourites", BadgeTone.Success)
@@ -150,14 +159,25 @@ fun AccountScreen(state: SettingsState, onBack: () -> Unit = {}, onSelect: (Scoo
             } }
             SunshineCard(panel = true) { Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Default scooter", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                state.scooters.value.orEmpty().forEach { scooter -> TextButton({ onSelect(scooter) }) { Text("${if (scooter.id == state.draft.scooterId) "●" else "○"}  ${scooter.name}") } }
-                TextButton(onAsk) { Text("${if (state.draft.scooterId == null) "●" else "○"}  Ask every time") }
-                state.scooters.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    state.scooters.value.orEmpty().forEach { scooter ->
+                        SunshineCard(Modifier.width(124.dp).clickable(enabled = !state.busy) { onSelect(scooter) }, panel = true, accent = if (scooter.id == state.draft.scooterId) Color(0xFF4F46E5) else null) {
+                            Column(Modifier.fillMaxWidth().padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                ScooterArt(scooter, Modifier.fillMaxWidth().height(56.dp))
+                                Text(scooter.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                            }
+                        }
+                    }
+                    SunshineCard(Modifier.width(124.dp).clickable(enabled = !state.busy, onClick = onAsk), panel = true, accent = if (state.draft.scooterId == null) Color(0xFF4F46E5) else null) {
+                        Column(Modifier.fillMaxWidth().padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) { Box(Modifier.height(56.dp), contentAlignment = Alignment.Center) { Text("▦", fontSize = 28.sp, color = MaterialTheme.colorScheme.primary) }; Text("Ask every time", fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
+                    }
+                }
+                state.scooters.error?.let { ProblemPanel("Couldn't load your scooters", it, if (state.scooterReconnectRequired) "Reconnect" else "Retry", if (state.scooterReconnectRequired) onReconnect else onRefresh) }
                 SunshineButton(onSave, enabled = !state.busy) { Text("Save preference") }
                 state.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
             } }
             SunshineCard(Modifier.fillMaxWidth(), panel = true) { TextButton(onConnection) { Text("Connection  ›") } }
-            SunshineCard(Modifier.fillMaxWidth(), panel = true) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("About", fontWeight = FontWeight.Bold, fontSize = 18.sp); Text("Sunshine Navigator · 2.0.0"); Text("Uses Sunshine by rescoot", color = MaterialTheme.colorScheme.onSurfaceVariant); Text("Maps © OpenStreetMap © CARTO", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+            SunshineCard(Modifier.fillMaxWidth(), panel = true) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("About", fontWeight = FontWeight.Bold, fontSize = 18.sp); Text("Sunshine Navigator · ${BuildConfig.VERSION_NAME}"); Text("Uses Sunshine by rescoot", color = MaterialTheme.colorScheme.onSurfaceVariant); Text("Maps © OpenStreetMap © CARTO", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
             SunshineButton(onSignOut, enabled = !state.busy, tone = ButtonTone.Danger) { Text("Sign out") }
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
