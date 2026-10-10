@@ -132,9 +132,34 @@ class MapsIntentParserTest {
     }
 
     @Test
+    fun `shared place preview is readable and keeps explicit coordinates`() {
+        val preview = parseSharedPlacePreview("geo:52.500218,13.270753?q=CityCube%20Berlin%2C%20Messedamm%2026")
+        assertEquals("CityCube Berlin, Messedamm 26", preview.label)
+        assertEquals(Coordinates(52.500218, 13.270753), preview.coordinates)
+    }
+
+    @Test
+    fun `geo coordinates keep explicit destination beside a decoded address query`() {
+        val uri = Uri.parse("geo:52.500218,13.270753?q=CityCube%20Berlin%2C%20Messedamm%2026%2C%2014055%20Berlin-Bezirk%20Charlottenburg-Wilmersdorf%2C%20Germany")
+        assertEquals(Coordinates(52.500218, 13.270753), MapsIntentParser.extractCoordinates(uri))
+        assertEquals("CityCube Berlin, Messedamm 26, 14055 Berlin-Bezirk Charlottenburg-Wilmersdorf, Germany", MapsIntentParser.extractPlaceName(uri))
+    }
+
+    @Test
     fun `geo altitude and encoded address query are supported`() {
         assertEquals(Coordinates(52.52, 13.41), MapsIntentParser.extractCoordinates(Uri.parse("geo:52.52,13.41,100")))
         assertEquals("C++", MapsIntentParser.extractPlaceName(Uri.parse("geo:0,0?q=C%2B%2B")))
+    }
+
+    @Test
+    fun `geo query coordinates preserve a label and placeholders are not destinations`() {
+        val labelledCoordinates = Uri.parse("geo:0,0?q=48.137,11.576(Munich)")
+        assertEquals(Coordinates(48.137, 11.576), MapsIntentParser.extractCoordinates(labelledCoordinates))
+        assertEquals("Munich", MapsIntentParser.extractPlaceName(labelledCoordinates))
+        assertNull(MapsIntentParser.extractCoordinates(Uri.parse("geo:0,0?q=Alexanderplatz")))
+        assertNull(MapsIntentParser.extractCoordinates(Uri.parse("geo:91,181")))
+        assertNull(MapsIntentParser.extractCoordinates(Uri.parse("geo:0,0?q=91,181")))
+        assertNull(MapsIntentParser.extractPlaceName(Uri.parse("geo:0,0?q=91,181")))
     }
 
     @Test

@@ -6,7 +6,7 @@ import android.util.Patterns
 
 object MapsIntentParser {
     const val MAX_INPUT_LENGTH = 16_384
-    private val pair = Regex("^\\s*([-+]?\\d+(?:\\.\\d+)?)\\s*,\\s*([-+]?\\d+(?:\\.\\d+)?)(?:\\s*\\([^)]*\\))?\\s*$")
+    private val pair = Regex("^\\s*([-+]?\\d+(?:\\.\\d+)?)\\s*,\\s*([-+]?\\d+(?:\\.\\d+)?)(?:\\s*\\(([^)]*)\\))?\\s*$")
     private val routePair = Regex("!1d([-+]?\\d+(?:\\.\\d+)?)!2d([-+]?\\d+(?:\\.\\d+)?)(?=!|$)")
     private val pinPair = Regex("!3d([-+]?\\d+(?:\\.\\d+)?)!4d([-+]?\\d+(?:\\.\\d+)?)(?=!|$)")
 
@@ -36,8 +36,11 @@ object MapsIntentParser {
             val value = uri.encodedSchemeSpecificPart
             val query = value.substringAfter('?', "")
             val q = Uri.parse("https://geo.invalid/?$query").getQueryParameter("q")
-            if (q != null) return parsePair(q)
-            return parsePair(value.substringBefore('?').substringBefore(';').split(',').take(2).joinToString(","))
+            val queryCoordinates = q?.let(::parsePair)?.takeUnless { it.isGeoPlaceholder() }
+            val explicitCoordinates = value.substringBefore('?').substringBefore(';').split(',').take(2).takeIf { it.size == 2 }
+                ?.let { coordinates(it[0], it[1]) }
+                ?.takeUnless { it.isGeoPlaceholder() }
+            return explicitCoordinates ?: queryCoordinates
         }
         if (!uri.isHierarchical) return null
         for (key in listOf("destination", "query", "q", "daddr")) {
@@ -79,7 +82,7 @@ object MapsIntentParser {
         if (uri.scheme == "geo") {
             val query = uri.encodedSchemeSpecificPart.substringAfter('?', "")
             return Uri.parse("https://geo.invalid/?$query").getQueryParameter("q")
-                ?.takeIf { parsePair(it) == null && it.isNotBlank() }
+                ?.let(::queryPlaceName)
         }
         if (!uri.isHierarchical) return null
         val index = uri.pathSegments.indexOf("place")
@@ -89,9 +92,7 @@ object MapsIntentParser {
             }
         }
         for (key in listOf("destination", "query", "q", "daddr")) {
-            uri.getQueryParameter(key)?.let {
-                if (parsePair(it) == null && it.isNotBlank()) return it
-            }
+            uri.getQueryParameter(key)?.let(::queryPlaceName)?.let { return it }
         }
         val direction = uri.pathSegments.indexOf("dir")
         if (direction >= 0) {
@@ -100,6 +101,15 @@ object MapsIntentParser {
         }
         return null
     }
+
+    private fun queryPlaceName(value: String): String? {
+        val match = pair.matchEntire(value)
+        if (match != null) return match.groupValues[3].takeIf(String::isNotBlank)
+        return value.takeIf { it.isNotBlank() && !coordinatePair.matches(it) }
+    }
+
+    private fun Coordinates.isGeoPlaceholder() = latitude == 0.0 && longitude == 0.0
+    private val coordinatePair = Regex("^\\s*[-+]?\\d+(?:\\.\\d+)?\\s*,\\s*[-+]?\\d+(?:\\.\\d+)?(?:\\s*\\([^)]*\\))?\\s*$")
 
     fun extractUrlOrText(text: String): String {
         if (text.length > MAX_INPUT_LENGTH) return ""

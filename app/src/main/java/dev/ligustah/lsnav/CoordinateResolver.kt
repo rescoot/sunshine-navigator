@@ -68,11 +68,17 @@ class CoordinateResolver(
         val input = MapsIntentParser.extractUrlOrText(text)
         MapsIntentParser.parsePair(input)?.let { return listOf(PlaceResult(it, input)) }
         var uri = Uri.parse(input)
-        MapsIntentParser.extractCoordinates(uri)?.let { return listOf(PlaceResult(it, it.display())) }
+        MapsIntentParser.extractCoordinates(uri)?.let { coordinates ->
+            val label = MapsIntentParser.extractPlaceName(uri)?.takeIf(String::isNotBlank) ?: coordinates.display()
+            return listOf(PlaceResult(coordinates, label))
+        }
         if (isShortLink(uri)) {
             val expanded = expandShortLink(input)
             uri = Uri.parse(expanded)
-            MapsIntentParser.extractCoordinates(uri)?.let { return listOf(PlaceResult(it, "${it.latitude}, ${it.longitude}")) }
+            MapsIntentParser.extractCoordinates(uri)?.let { coordinates ->
+                val label = MapsIntentParser.extractPlaceName(uri)?.takeIf(String::isNotBlank) ?: coordinates.display()
+                return listOf(PlaceResult(coordinates, label))
+            }
         }
         val name = MapsIntentParser.extractPlaceName(uri)
         val isUrl = uri.scheme != null || input.contains("://") || uri.host != null

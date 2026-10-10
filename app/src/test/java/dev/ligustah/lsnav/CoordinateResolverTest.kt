@@ -25,6 +25,28 @@ class CoordinateResolverTest {
         assertEquals(Coordinates(52.52, 13.41), resolver.resolve("52.52,13.41").single().coordinates)
         assertEquals(Coordinates(52.52, 13.41), resolver.resolve("geo:52.52,13.41").single().coordinates)
     }
+    @Test fun `explicit geo coordinates and decoded place label skip lookup`() = runBlocking {
+        val resolver = CoordinateResolver(LocationLookup { error("Unexpected geocoding") })
+        val place = resolver.resolve("geo:52.500218,13.270753?q=CityCube%20Berlin%2C%20Messedamm%2026%2C%2014055%20Berlin-Bezirk%20Charlottenburg-Wilmersdorf%2C%20Germany").single()
+        assertEquals(Coordinates(52.500218, 13.270753), place.coordinates)
+        assertEquals("CityCube Berlin, Messedamm 26, 14055 Berlin-Bezirk Charlottenburg-Wilmersdorf, Germany", place.label)
+    }
+    @Test fun `geo placeholder resolves only a textual query and never the sentinel`() = runBlocking {
+        var lookupQuery: String? = null
+        val result = PlaceResult(Coordinates(52.52, 13.41), "Alexanderplatz, Berlin")
+        val resolver = CoordinateResolver(LocationLookup { lookupQuery = it; listOf(result) })
+        assertEquals(listOf(result), resolver.resolve("geo:0,0?q=Alexanderplatz%2C%20Berlin"))
+        assertEquals("Alexanderplatz, Berlin", lookupQuery)
+        assertEquals(emptyList<PlaceResult>(), CoordinateResolver(LocationLookup { error("Invalid coordinates must not be geocoded") })
+            .resolve("geo:0,0?q=91,181"))
+    }
+    @Test fun `query-only shared address reaches lookup unchanged`() = runBlocking {
+        var actual: String? = null
+        val result = PlaceResult(Coordinates(52.52, 13.41), "CityCube Berlin")
+        assertEquals(listOf(result), CoordinateResolver(LocationLookup { actual = it; listOf(result) })
+            .resolve("CityCube Berlin, Messedamm 26"))
+        assertEquals("CityCube Berlin, Messedamm 26", actual)
+    }
     @Test fun `short link follows a trusted redirect and closes response`() = runBlocking {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setResponseCode(302).setHeader("Location", "https://www.google.com/maps/place/48.137,11.576"))
